@@ -1,0 +1,55 @@
+# Voice Code-Switching System
+# ============================
+# File dan folder yang TIDAK boleh masuk ke repositori Git
+
+# --- Konfigurasi Sensitif ---
+.env
+
+# --- Folder Virtual Environment ---
+/venv/
+/env/
+
+# --- Folder Skrip Internal ---
+/scripts/
+
+# --- File Audio Korpus (ukuran besar) ---
+corpus/audio/*.wav
+corpus/audio/*.mp3
+corpus/audio/*.ogg
+
+# --- Folder Model Biner (ukuran sangat besar) ---
+models/whisper.cpp/build/
+models/whisper.cpp/models/
+app/coqui_tts/data/*.pth
+app/coqui_tts/data/*.bin
+
+# --- Folder Temporary Audio ---
+temp/
+
+# --- Output & Log Runtime ---
+*.log
+output*.wav
+response*.wav
+
+# --- Python Cache ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# --- Build & Dist ---
+build/
+dist/
+*.egg-info/
+
+# --- IDE / Editor ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- OS Files ---
+.DS_Store
+Thumbs.db
+desktop.ini

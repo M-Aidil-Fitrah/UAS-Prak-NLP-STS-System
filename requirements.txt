@@ -1,0 +1,39 @@
+# ============================================================
+# URUTAN INSTALASI:
+#   1. pip install -r requirements.txt
+#   2. pip install coqui-tts==0.27.5
+#   3. pip install transformers==5.0.0   <-- WAJIB setelah coqui-tts!
+# ============================================================
+
+# --- Backend API Server ---
+fastapi==0.115.12
+uvicorn[standard]==0.34.3
+
+# --- UI Prototype ---
+gradio==5.31.0
+
+# --- Google Gemini LLM ---
+# Versi 2.6.0 (stable). Versi 1.16.0 telah di-yank dari PyPI.
+google-genai==2.6.0
+
+# --- Text-to-Speech ---
+# Install terpisah setelah requirements ini, lalu fix transformers:
+#   pip install coqui-tts==0.27.5
+#   pip install transformers==5.0.0
+coqui-tts==0.27.5
+
+# WAJIB: Kunci versi transformers agar kompatibel dengan Coqui TTS
+transformers==5.0.0
+
+# --- Environment & Config ---
+python-dotenv==1.1.0
+
+# --- Audio Processing ---
+numpy==1.26.4
+scipy==1.13.1
+soundfile==0.12.1
+pydub==0.25.1
+
+# --- Utilities ---
+requests==2.32.3
+langdetect==1.0.9
