@@ -143,8 +143,10 @@ def synthesize_speech(text: str, output_path: str) -> str:
 
 def _synthesize_segment(tts, text: str, output_path: str) -> None:
     """Sintesis satu segmen teks ke file WAV."""
+    speaker_name = tts.speakers[TTS_SPEAKER_ID] if getattr(tts, "is_multi_speaker", False) and tts.speakers else None
     tts.tts_to_file(
         text=text,
+        speaker=speaker_name,
         file_path=output_path,
     )
 
