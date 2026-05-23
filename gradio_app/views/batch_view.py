@@ -1,69 +1,135 @@
+# gradio_app/views/batch_view.py
 import gradio as gr
 
+
 def build():
-    with gr.Column(elem_classes="w-full relative overflow-x-hidden"):
-        
-        # Top Nav
-        gr.HTML("""
-        <header class="relative z-10 w-full pt-10 pb-6 px-6 flex flex-col items-center">
-            <div class="max-w-7xl w-full flex flex-col items-center">
-                <h1 class="text-[32px] font-bold text-[#dae2fd] text-center mb-2 tracking-tight drop-shadow-sm">
+    with gr.Row(equal_height=True):
+
+        # ── LEFT SIDEBAR ──────────────────────────────────────
+        with gr.Column(scale=1, elem_classes="glass-card", min_width=240):
+            gr.HTML("""
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:2rem;">
+                <span class="material-symbols-outlined" style="color:#3b82f6; font-size:26px;">graphic_eq</span>
+                <span style="font-size:1.2rem; font-weight:700; color:#dae2fc; letter-spacing:-0.02em;">Sonic Lingua</span>
+            </div>
+            <p style="font-size:0.65rem; font-weight:600; color:#334155; text-transform:uppercase; letter-spacing:0.18em; margin-bottom:0.75rem;">Workflow</p>
+            """)
+
+            btn_upload = gr.Button(
+                "⬆  Upload Audio",
+                elem_classes="nav-btn",
+            )
+            btn_record = gr.Button(
+                "⏺  Record Audio",
+                elem_classes="nav-btn",
+            )
+            btn_batch = gr.Button(
+                "⚙  Batch NLP",
+                elem_classes="nav-btn nav-active",
+            )
+
+            gr.HTML("""
+            <div class="sidebar-footer" style="margin-top:auto; padding-top:3rem; border-top: 1px solid rgba(255,255,255,0.06); margin-top:10rem;">
+                <a href="#">
+                    <span class="material-symbols-outlined" style="font-size:16px;">api</span>
+                    Use via API
+                </a>
+                <a href="#">
+                    <span class="material-symbols-outlined" style="font-size:16px;">settings</span>
+                    Settings
+                </a>
+                <p style="font-size:0.7rem; color:#1e293b; margin-top:1rem;">Built with Gradio</p>
+            </div>
+            """)
+
+        # ── MAIN CONTENT ─────────────────────────────────────
+        with gr.Column(scale=4):
+
+            # Page Header
+            gr.HTML("""
+            <div style="text-align:center; margin-bottom:2rem; padding-top:0.5rem;">
+                <h1 style="font-size:1.9rem; font-weight:700; color:#dae2fc; letter-spacing:-0.03em; margin:0 0 0.6rem 0; line-height:1.2;">
                     Multilingual Speech-to-Speech System
                 </h1>
-                <p class="text-[16px] text-[#c1c6d7] text-center mb-6 bg-[#131b2e]/50 backdrop-blur-sm px-6 py-2 rounded-full border border-[#414755]/30">
-                    Saudi Tourism AI Assistant — Code-Switching Support <span class="text-[#adc6ff] font-medium">(ID / EN / AR)</span>
-                </p>
-            </div>
-        </header>
-        """)
-
-        with gr.Row(elem_classes="flex justify-center w-full z-10 mb-8"):
-            with gr.Row(elem_classes="p-1 bg-[#060e20]/80 backdrop-blur-md rounded-full border border-[#414755]/40"):
-                btn_upload = gr.Button("Upload Audio", elem_classes="nav-top-btn")
-                btn_record = gr.Button("Record Audio", elem_classes="nav-top-btn")
-                btn_batch = gr.Button("Input Audio NLP", elem_classes="nav-top-btn-active")
-
-        # Main Content
-        with gr.Row(elem_classes="max-w-[1400px] mx-auto px-6 py-4"):
-            
-            # Left: Batch Config
-            with gr.Column(scale=1, min_width=380, elem_classes="glass-card"):
-                gr.Markdown("## <span class='material-symbols-outlined text-[#adc6ff]'>settings_b_roll</span> Batch Control")
-                
-                gr.Markdown("### <span class='material-symbols-outlined'>folder_open</span> Source Directory")
-                gr.HTML("""
-                <div class="bg-[#060e20]/50 border border-[#414755]/50 rounded-2xl p-4 mb-6">
-                    <p class="text-[14px] text-[#c1c6d7] mb-2">Processing all WAV files from:</p>
-                    <div class="flex items-center gap-2 flex-wrap">
-                        <span class="bg-[#222a3d]/80 border border-[#414755]/60 text-[13px] font-mono text-[#adc6ff] px-3 py-1.5 rounded-lg">corpus/audio/Audio_NLP/</span>
-                    </div>
+                <div style="display:inline-flex; align-items:center; gap:6px; background:rgba(19,27,46,0.6); border:1px solid rgba(255,255,255,0.08); border-radius:9999px; padding:0.35rem 1.1rem;">
+                    <span style="font-size:0.82rem; color:#94a3b8;">Saudi Tourism AI Assistant — Code-Switching Support</span>
+                    <span style="font-size:0.82rem; font-weight:600; color:#93c5fd;">(ID / EN / AR)</span>
                 </div>
-                """)
+            </div>
+            """)
 
-                gr.Markdown("### <span class='material-symbols-outlined'>language</span> Output Language Mode")
-                mode = gr.Radio(
-                    choices=[("Preserve", "preserve"), ("Normalize", "normalize")],
-                    value="preserve", 
-                    label="", 
-                    container=False, 
-                    elem_classes="toggle-radio mb-8"
-                )
-                
-                run_btn = gr.Button("Start Processing Run", variant="primary", elem_classes="gr-button-primary w-full")
+            with gr.Row(equal_height=False):
 
-            # Right: Results
-            with gr.Column(scale=2):
-                with gr.Column(elem_classes="glass-card"):
-                    gr.Markdown("### <span class='material-symbols-outlined text-[#adc6ff]'>terminal</span> system_process_log.sh")
-                    log_output = gr.Textbox(
-                        value="*# NLP Audio Batch Processor v2.4.1\\n# Initialization complete. Waiting for user command...*", 
-                        show_label=False, 
-                        elem_classes="terminal-output", 
-                        lines=8
+                # ── Batch Control Panel ──────────────────────
+                with gr.Column(scale=1, min_width=300, elem_classes="glass-card"):
+                    gr.HTML("""
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:1.25rem;">
+                        <span class="material-symbols-outlined" style="color:#93c5fd; font-size:20px;">settings_b_roll</span>
+                        <span style="font-size:0.95rem; font-weight:600; color:#dae2fc;">Batch Control</span>
+                    </div>
+
+                    <div style="display:flex; align-items:center; gap:6px; margin-bottom:0.6rem;">
+                        <span class="material-symbols-outlined" style="color:#64748b; font-size:16px;">folder_open</span>
+                        <span style="font-size:0.75rem; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:0.1em;">Source Directory</span>
+                    </div>
+                    <div style="background:rgba(6,14,32,0.55); border:1px solid rgba(59,130,246,0.15); border-radius:0.75rem; padding:0.875rem 1rem; margin-bottom:1.5rem;">
+                        <p style="font-size:0.78rem; color:#64748b; margin:0 0 0.4rem 0;">Processing all WAV files from:</p>
+                        <span class="path-badge">corpus/audio/Audio_NLP/</span>
+                    </div>
+
+                    <div style="display:flex; align-items:center; gap:6px; margin-bottom:0.6rem;">
+                        <span class="material-symbols-outlined" style="color:#64748b; font-size:16px;">language</span>
+                        <span style="font-size:0.75rem; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:0.1em;">Output Language Mode</span>
+                    </div>
+                    """)
+
+                    mode = gr.Radio(
+                        choices=[("Preserve", "preserve"), ("Normalize", "normalize")],
+                        value="preserve",
+                        label="",
+                        container=False,
+                        elem_classes="toggle-radio",
                     )
 
-                with gr.Column(elem_classes="glass-card"):
-                    gr.Markdown("### <span class='material-symbols-outlined text-[#b9c7e0]'>analytics</span> Analysis Results")
-                    out_csv = gr.File(label="Download CSV", interactive=False)
+                    gr.HTML('<div style="height:1.5rem;"></div>')
 
-    return mode, run_btn, out_csv, log_output, btn_upload, btn_record, btn_batch
+                    run_btn = gr.Button(
+                        "▶  Start Processing Run",
+                        variant="primary",
+                        size="lg",
+                    )
+
+                # ── Right: Logs + Results ────────────────────
+                with gr.Column(scale=2):
+
+                    with gr.Column(elem_classes="glass-card"):
+                        gr.HTML("""
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:1rem;">
+                            <span class="material-symbols-outlined" style="color:#7dd3fc; font-size:20px;">terminal</span>
+                            <span style="font-size:0.85rem; font-weight:600; color:#dae2fc; font-family:'JetBrains Mono',monospace; letter-spacing:0.04em;">system_process_log.sh</span>
+                        </div>
+                        """)
+                        log_output = gr.Textbox(
+                            value="# NLP Audio Batch Processor v2.4.1\n# Initialization complete. Waiting for user command...",
+                            show_label=False,
+                            elem_classes="terminal-output",
+                            lines=8,
+                            max_lines=8,
+                        )
+
+                    with gr.Column(elem_classes="glass-card"):
+                        gr.HTML("""
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:1rem;">
+                            <span class="material-symbols-outlined" style="color:#b9c7e0; font-size:20px;">analytics</span>
+                            <span style="font-size:0.95rem; font-weight:600; color:#dae2fc;">Analysis Results</span>
+                        </div>
+                        """)
+                        out_csv = gr.File(
+                            label="Download CSV",
+                            interactive=False,
+                        )
+
+    return (
+        mode, run_btn, out_csv, log_output,
+        btn_upload, btn_record, btn_batch,
+    )

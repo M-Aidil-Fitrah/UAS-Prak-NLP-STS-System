@@ -1,58 +1,143 @@
+# gradio_app/views/record_view.py
 import gradio as gr
 
+
 def build():
-    with gr.Column(elem_classes="w-full relative overflow-x-hidden"):
-        
-        # Top Nav
-        gr.HTML("""
-        <header class="relative z-10 w-full pt-10 pb-6 px-6 flex flex-col items-center">
-            <div class="max-w-7xl w-full flex flex-col items-center">
-                <h1 class="text-[32px] font-bold text-[#dae2fd] text-center mb-2 tracking-tight drop-shadow-sm">
+    with gr.Row(equal_height=True):
+
+        # ── LEFT SIDEBAR ──────────────────────────────────────
+        with gr.Column(scale=1, elem_classes="glass-card", min_width=240):
+            gr.HTML("""
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:2rem;">
+                <span class="material-symbols-outlined" style="color:#3b82f6; font-size:26px;">graphic_eq</span>
+                <span style="font-size:1.2rem; font-weight:700; color:#dae2fc; letter-spacing:-0.02em;">Sonic Lingua</span>
+            </div>
+            <p style="font-size:0.65rem; font-weight:600; color:#334155; text-transform:uppercase; letter-spacing:0.18em; margin-bottom:0.75rem;">Workflow</p>
+            """)
+
+            btn_upload = gr.Button(
+                "⬆  Upload Audio",
+                elem_classes="nav-btn",
+            )
+            btn_record = gr.Button(
+                "⏺  Record Audio",
+                elem_classes="nav-btn nav-active",
+            )
+            btn_batch = gr.Button(
+                "⚙  Batch NLP",
+                elem_classes="nav-btn",
+            )
+
+            gr.HTML("""
+            <div class="sidebar-footer" style="margin-top:auto; padding-top:3rem; border-top: 1px solid rgba(255,255,255,0.06); margin-top:10rem;">
+                <a href="#">
+                    <span class="material-symbols-outlined" style="font-size:16px;">api</span>
+                    Use via API
+                </a>
+                <a href="#">
+                    <span class="material-symbols-outlined" style="font-size:16px;">settings</span>
+                    Settings
+                </a>
+                <p style="font-size:0.7rem; color:#1e293b; margin-top:1rem;">Built with Gradio</p>
+            </div>
+            """)
+
+        # ── MAIN CONTENT ─────────────────────────────────────
+        with gr.Column(scale=4):
+
+            # Page Header
+            gr.HTML("""
+            <div style="text-align:center; margin-bottom:2rem; padding-top:0.5rem;">
+                <h1 style="font-size:1.9rem; font-weight:700; color:#dae2fc; letter-spacing:-0.03em; margin:0 0 0.6rem 0; line-height:1.2;">
                     Multilingual Speech-to-Speech System
                 </h1>
-                <p class="text-[16px] text-[#c1c6d7] text-center mb-6 bg-[#131b2e]/50 backdrop-blur-sm px-6 py-2 rounded-full border border-[#414755]/30">
-                    Saudi Tourism AI Assistant — Code-Switching Support <span class="text-[#adc6ff] font-medium">(ID / EN / AR)</span>
-                </p>
+                <div style="display:inline-flex; align-items:center; gap:6px; background:rgba(19,27,46,0.6); border:1px solid rgba(255,255,255,0.08); border-radius:9999px; padding:0.35rem 1.1rem;">
+                    <span style="font-size:0.82rem; color:#94a3b8;">Saudi Tourism AI Assistant — Code-Switching Support</span>
+                    <span style="font-size:0.82rem; font-weight:600; color:#93c5fd;">(ID / EN / AR)</span>
+                </div>
             </div>
-        </header>
-        """)
+            """)
 
-        with gr.Row(elem_classes="flex justify-center w-full z-10 mb-8"):
-            btn_upload = gr.Button("Upload Audio", elem_classes="nav-top-btn")
-            btn_record = gr.Button("Record Audio", elem_classes="nav-top-btn-active")
-            btn_batch = gr.Button("Input Audio NLP", elem_classes="nav-top-btn")
+            # ── Top Row: Mic + Settings ──────────────────────
+            with gr.Row(equal_height=False):
 
-        # Main Content
-        with gr.Row(elem_classes="max-w-6xl mx-auto px-6 py-4"):
-            
-            # Left: Mic
-            with gr.Column(scale=3, elem_classes="glass-card"):
-                gr.Markdown("## <span class='material-symbols-outlined text-[#adc6ff]'>mic</span> AUDIO INPUT")
-                audio_input = gr.Audio(sources=["microphone"], type="filepath", label="")
+                with gr.Column(scale=3, elem_classes="glass-card"):
+                    gr.HTML("""
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:1rem;">
+                        <span class="material-symbols-outlined" style="color:#93c5fd; font-size:20px;">mic</span>
+                        <span style="font-size:0.95rem; font-weight:600; color:#dae2fc; text-transform:uppercase; letter-spacing:0.08em;">Audio Input</span>
+                    </div>
+                    """)
+                    audio_input = gr.Audio(
+                        sources=["microphone"],
+                        type="filepath",
+                        label="",
+                    )
 
-            # Right: Settings & Outputs
-            with gr.Column(scale=2):
-                with gr.Column(elem_classes="glass-card"):
-                    gr.Markdown("### <span class='material-symbols-outlined'>tune</span> Mode Output Bahasa")
+                with gr.Column(scale=2, elem_classes="glass-card"):
+                    gr.HTML("""
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:1rem;">
+                        <span class="material-symbols-outlined" style="color:#94a3b8; font-size:20px;">tune</span>
+                        <span style="font-size:0.95rem; font-weight:600; color:#dae2fc;">Mode Output</span>
+                    </div>
+                    <p style="font-size:0.75rem; color:#475569; margin-bottom:0.5rem; text-transform:uppercase; letter-spacing:0.08em;">Bahasa</p>
+                    """)
                     mode = gr.Radio(
                         choices=[("Preserve", "preserve"), ("Normalize", "normalize")],
-                        value="preserve", 
-                        label="", 
-                        container=False, 
-                        elem_classes="toggle-radio"
+                        value="preserve",
+                        label="",
+                        container=False,
+                        elem_classes="toggle-radio",
                     )
-                    
+                    gr.HTML('<div style="height:0.75rem;"></div>')
                     with gr.Row():
-                        clear_btn = gr.Button("Clear", variant="secondary")
-                        run_btn = gr.Button("Run Pipeline", variant="primary", elem_classes="gr-button-primary")
+                        clear_btn = gr.Button(
+                            "Clear",
+                            variant="secondary",
+                            size="lg",
+                        )
+                        run_btn = gr.Button(
+                            "▶  Run Pipeline",
+                            variant="primary",
+                            size="lg",
+                        )
 
-                with gr.Column(elem_classes="glass-card"):
-                    gr.Markdown("### <span class='material-symbols-outlined text-[#b9c7e0]'>output</span> RESPONSE")
-                    out_audio = gr.Audio(label="Audio Respons", interactive=False)
-                    out_csv = gr.File(label="Download CSV", interactive=False)
+            # ── Bottom Row: Response + Logs ──────────────────
+            with gr.Row(equal_height=False):
 
-                with gr.Column(elem_classes="glass-card"):
-                    gr.Markdown("### <span class='material-symbols-outlined text-[#c1c6d7]'>terminal</span> LOGS")
-                    log_output = gr.Textbox(value="*Menunggu input...*", show_label=False, elem_classes="terminal-output", lines=4)
+                with gr.Column(scale=3, elem_classes="glass-card"):
+                    gr.HTML("""
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:1rem;">
+                        <span class="material-symbols-outlined" style="color:#b9c7e0; font-size:20px;">output_circle</span>
+                        <span style="font-size:0.95rem; font-weight:600; color:#dae2fc; text-transform:uppercase; letter-spacing:0.08em;">Response</span>
+                    </div>
+                    """)
+                    out_audio = gr.Audio(
+                        label="Audio Respons",
+                        interactive=False,
+                    )
+                    out_csv = gr.File(
+                        label="Download CSV",
+                        interactive=False,
+                    )
 
-    return audio_input, mode, run_btn, clear_btn, out_audio, out_csv, log_output, btn_upload, btn_record, btn_batch
+                with gr.Column(scale=2, elem_classes="glass-card"):
+                    gr.HTML("""
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:1rem;">
+                        <span class="material-symbols-outlined" style="color:#7dd3fc; font-size:20px;">terminal</span>
+                        <span style="font-size:0.95rem; font-weight:600; color:#dae2fc; text-transform:uppercase; letter-spacing:0.08em;">Logs</span>
+                    </div>
+                    """)
+                    log_output = gr.Textbox(
+                        value="# Waiting for input...",
+                        show_label=False,
+                        elem_classes="terminal-output",
+                        lines=8,
+                        max_lines=8,
+                    )
+
+    return (
+        audio_input, mode, run_btn, clear_btn,
+        out_audio, out_csv, log_output,
+        btn_upload, btn_record, btn_batch,
+    )
