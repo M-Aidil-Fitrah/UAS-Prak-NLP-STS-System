@@ -16,8 +16,8 @@ if ROOT_DIR not in sys.path:
 
 load_dotenv()
 
-# Konfigurasi Endpoint Backend
-BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
+# Konfigurasi Endpoint Backend (Gunakan 127.0.0.1 untuk mencegah masalah IPv6 Windows localhost)
+BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
 API_ENDPOINT = f"{BACKEND_URL}/voice-chat"
 
 # Custom Premium CSS untuk Tampilan Mewah (Glassmorphism & Sleek Dark Mode)

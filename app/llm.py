@@ -17,9 +17,9 @@ load_dotenv()
 # ─── Konfigurasi ─────────────────────────────────────────────────────────────
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-# Sesuai projects.md: gunakan gemma-4-27b-it, gemma-4-26b-a4b-it, atau gemma-4-31b-it
+# Sesuai instruksi proyek: kita gunakan model Gemma 4 31B
 # Sesuaikan juga dengan rate limit RPM & RPD yang berlaku di Google AI Studio kamu
-GEMINI_MODEL   = os.getenv("GEMINI_MODEL", "models/gemma-4-27b-it")
+GEMINI_MODEL   = os.getenv("GEMINI_MODEL", "models/gemma-4-31b-it")
 
 # Rate-limit control
 MAX_RETRIES     = 3

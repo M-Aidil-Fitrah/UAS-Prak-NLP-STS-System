@@ -67,9 +67,10 @@ def _get_tts() -> "TTS":  # type: ignore[name-defined]
         logger.info("[TTS] Model berhasil dimuat.")
         return _tts_instance
 
-    except ImportError:
+    except ImportError as e:
         raise ImportError(
-            "Coqui TTS belum terinstall. Jalankan: pip install coqui-tts==0.27.5"
+            f"Gagal memuat modul TTS. Pesan asli: {e}\n"
+            "Pastikan PyTorch (torch) dan coqui-tts sudah terinstall dengan benar."
         )
     except Exception as e:
         raise RuntimeError(f"Gagal memuat model TTS: {e}")
