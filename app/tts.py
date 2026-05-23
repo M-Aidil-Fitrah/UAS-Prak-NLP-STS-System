@@ -60,7 +60,6 @@ def _get_tts() -> "TTS":  # type: ignore[name-defined]
         tts.load_tts_model_by_path(
             model_path=TTS_MODEL_PATH,
             config_path=TTS_CONFIG_PATH,
-            speakers_file_path=TTS_SPEAKERS_PATH if os.path.exists(TTS_SPEAKERS_PATH) else None,
             gpu=False,
         )
         _tts_instance = tts
@@ -146,7 +145,6 @@ def _synthesize_segment(tts, text: str, output_path: str) -> None:
     """Sintesis satu segmen teks ke file WAV."""
     tts.tts_to_file(
         text=text,
-        speaker_id=TTS_SPEAKER_ID,
         file_path=output_path,
     )
 
