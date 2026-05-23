@@ -9,9 +9,6 @@
 /venv/
 /env/
 
-# --- Folder Skrip Internal ---
-/scripts/
-
 # --- File Audio Korpus (ukuran besar) ---
 corpus/audio/*.wav
 corpus/audio/*.mp3
@@ -23,13 +20,12 @@ models/whisper.cpp/models/
 app/coqui_tts/data/*.pth
 app/coqui_tts/data/*.bin
 
-# --- Folder Temporary Audio ---
+# --- Folder Temporary & Output ---
 temp/
+output/
 
-# --- Output & Log Runtime ---
+# --- Log Runtime ---
 *.log
-output*.wav
-response*.wav
 
 # --- Python Cache ---
 __pycache__/
@@ -54,4 +50,4 @@ dist/
 Thumbs.db
 desktop.ini
 
-*.wav
+/scripts/

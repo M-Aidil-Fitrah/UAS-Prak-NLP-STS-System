@@ -1,33 +1,29 @@
 """
-app/main.py — FASE 6: FastAPI Backend Server
-Menyediakan endpoint voice-chat end-to-end (STT -> Processing -> LLM -> TTS).
+app/main.py — FastAPI Backend Server
+Endpoint voice-chat end-to-end (STT -> Processing -> LLM -> TTS).
+Menggunakan app.pipeline untuk logika inti.
 """
 
 import os
 import uuid
 import shutil
 import logging
+import urllib.parse
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.stt import transcribe_speech_to_text
-from app.utils import normalize_transcript
-from app.llm import generate_response
-from app.tts import synthesize_speech
-
-# ─── Setup Logging & Apps ────────────────────────────────────────────────────
+from app.pipeline import run_pipeline
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Speech-to-Speech Code-Switching System",
-    description="UAS Praktikum NLP 2025/2026 Genap - Speech-to-Speech System dengan Pola Code-Switching (ID-EN-AR)",
-    version="1.0.0"
+    description="UAS Praktikum NLP — Speech-to-Speech dengan Code-Switching (ID-EN-AR)",
+    version="2.0.0",
 )
 
-# Aktifkan CORS agar frontend Gradio/web client lancar berkomunikasi
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -37,106 +33,78 @@ app.add_middleware(
 )
 
 TEMP_DIR = "temp"
+OUTPUT_DIR = "output"
 os.makedirs(TEMP_DIR, exist_ok=True)
+os.makedirs(os.path.join(OUTPUT_DIR, "audio"), exist_ok=True)
 
-# ─── Endpoint Utama ──────────────────────────────────────────────────────────
 
 @app.post("/voice-chat")
 async def voice_chat_endpoint(
     audio: UploadFile = File(...),
-    mode: str = Form("preserve")  # "preserve" atau "normalize"
+    mode: str = Form("preserve"),
 ):
-    """
-    Endpoint Voice-Chat Utama:
-    Menerima file audio user -> STT -> Normalisasi -> Gemini LLM -> TTS -> Return WAV file.
-    """
+    """Endpoint Voice-Chat: audio -> STT -> LLM -> TTS -> audio response."""
     if mode not in ["preserve", "normalize"]:
-        raise HTTPException(status_code=400, detail="Mode harus berupa 'preserve' atau 'normalize'")
+        raise HTTPException(status_code=400, detail="Mode harus 'preserve' atau 'normalize'")
 
     session_id = uuid.uuid4().hex[:8]
     logger.info(f"\n=== [Pipeline Started] Session: {session_id} | Mode: {mode} ===")
 
-    # Path file audio temporer
-    input_ext = os.path.splitext(audio.filename)[1] if audio.filename else ".wav"
-    if not input_ext:
-        input_ext = ".wav"
-        
-    temp_input_path = os.path.join(TEMP_DIR, f"input_{session_id}{input_ext}")
-    temp_output_path = os.path.join(TEMP_DIR, f"output_{session_id}.wav")
+    input_ext = os.path.splitext(audio.filename or ".wav")[1] or ".wav"
+    temp_input = os.path.join(TEMP_DIR, f"input_{session_id}{input_ext}")
 
     try:
-        # 1. Simpan audio input secara temporer
-        with open(temp_input_path, "wb") as buffer:
-            shutil.copyfileobj(audio.file, buffer)
-        logger.info(f"[1/5] Audio input disimpan: {temp_input_path}")
+        # Simpan audio input
+        with open(temp_input, "wb") as buf:
+            shutil.copyfileobj(audio.file, buf)
 
-        # 2. Jalankan Speech-to-Text (STT)
-        logger.info("[2/5] Menjalankan transkripsi STT via Whisper...")
-        raw_text = transcribe_speech_to_text(temp_input_path)
-        logger.info(f"STT Raw Transcript: '{raw_text}'")
+        # Jalankan pipeline
+        result = run_pipeline(temp_input, mode=mode, output_dir=OUTPUT_DIR)
 
-        if not raw_text.strip():
-            raise HTTPException(status_code=422, detail="Gagal mentranskripsi audio: Teks kosong/tidak terdengar.")
+        if result["status"] != "success":
+            raise RuntimeError(result.get("error", "Pipeline gagal"))
 
-        # 3. Text Processing (Normalisasi)
-        clean_text = normalize_transcript(raw_text)
-        logger.info(f"[3/5] Teks bersih (Normalisasi): '{clean_text}'")
+        output_path = result["tts_output_path"]
+        if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+            raise RuntimeError("Audio output kosong")
 
-        # 4. Hubungkan ke Large Language Model (Gemini LLM)
-        logger.info(f"[4/5] Mengirim transkrip ke Gemini (Mode: {mode})...")
-        llm_response = generate_response(clean_text, mode=mode)
-        logger.info(f"Gemini LLM Response: '{llm_response}'")
+        logger.info(f"=== [Pipeline Finished] Session: {session_id} ===")
 
-        # 5. Sintesis respons ke Speech (TTS)
-        logger.info("[5/5] Mensintesis teks respons ke audio via Coqui TTS...")
-        synthesize_speech(llm_response, temp_output_path)
-
-        # Cek apakah file audio respons berhasil dibuat
-        if not os.path.exists(temp_output_path) or os.path.getsize(temp_output_path) == 0:
-            raise RuntimeError("Gagal menghasilkan audio respons TTS.")
-
-        logger.info(f"=== [Pipeline Finished] Session: {session_id} - Mengirim audio respons ===")
-        
-        # Kirim audio respons
+        # Kirim audio + metadata via URL-encoded headers
+        headers = {
+            "X-Transcription": urllib.parse.quote(result.get("raw_transcript", "")),
+            "X-LLM-Response": urllib.parse.quote(result.get("llm_response", "")),
+            "Access-Control-Expose-Headers": "X-Transcription, X-LLM-Response",
+        }
         return FileResponse(
-            path=temp_output_path,
+            path=output_path,
             media_type="audio/wav",
-            filename=f"response_{session_id}.wav"
+            filename=f"response_{session_id}.wav",
+            headers=headers,
         )
 
-    except HTTPException as he:
-        logger.error(f"[Pipeline Error] HTTP {he.status_code}: {he.detail}")
-        # Hapus file temporer input jika terjadi error
-        _safe_delete(temp_input_path)
-        raise he
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"[Pipeline Unexpected Error]: {str(e)}", exc_info=True)
-        # Hapus file temporer input jika terjadi error
-        _safe_delete(temp_input_path)
-        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
-
+        logger.error(f"[Pipeline Error]: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
-        # PENTING: Hapus file input temporer setelah diproses agar hemat disk
-        _safe_delete(temp_input_path)
+        _safe_delete(temp_input)
 
-
-# ─── Background Cleaner / Cleanup Helper ──────────────────────────────────────
 
 @app.on_event("shutdown")
-def cleanup_temp_dir():
-    """Hapus seluruh isi folder temp saat server dimatikan."""
+def cleanup_temp():
+    """Bersihkan folder temp saat server dimatikan."""
     if os.path.exists(TEMP_DIR):
-        logger.info("Cleaning up temp directory on shutdown...")
-        for filename in os.listdir(TEMP_DIR):
-            file_path = os.path.join(TEMP_DIR, filename)
-            if filename != ".gitkeep":
-                _safe_delete(file_path)
+        logger.info("Cleaning up temp directory...")
+        for f in os.listdir(TEMP_DIR):
+            if f != ".gitkeep":
+                _safe_delete(os.path.join(TEMP_DIR, f))
 
 
 def _safe_delete(path: str):
-    """Menghapus file secara aman tanpa memicu crash jika file tidak ada."""
     try:
         if os.path.exists(path):
             os.remove(path)
     except Exception as e:
-        logger.warning(f"Gagal menghapus file {path}: {e}")
+        logger.warning(f"Gagal hapus {path}: {e}")

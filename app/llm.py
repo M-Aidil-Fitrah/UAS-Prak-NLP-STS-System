@@ -72,7 +72,8 @@ def _get_client() -> genai.Client:
 
 def generate_response(transcript: str, mode: str = "preserve") -> str:
     """
-    Mengirim transkrip ke Gemini dan mengembalikan teks respons.
+    Mengirim transkrip ke Gemini/Gemma dan mengembalikan teks respons.
+    Mendukung sistem Auto-Fallback jika salah satu model mengalami error 500/503 atau rate-limit.
 
     Args:
         transcript: Teks hasil transkripsi STT (sudah dinormalisasi).
@@ -80,10 +81,6 @@ def generate_response(transcript: str, mode: str = "preserve") -> str:
 
     Returns:
         Teks respons dari LLM.
-
-    Raises:
-        ValueError: Jika API key tidak dikonfigurasi.
-        RuntimeError: Jika permintaan gagal setelah semua retry.
     """
     if not transcript or not transcript.strip():
         return "Maaf, saya tidak dapat memahami input yang kosong."
@@ -96,47 +93,63 @@ def generate_response(transcript: str, mode: str = "preserve") -> str:
 
     client = _get_client()
 
-    for attempt in range(1, MAX_RETRIES + 1):
-        try:
-            logger.info(f"[LLM] Attempt {attempt}/{MAX_RETRIES} | Mode: {mode} | Model: {GEMINI_MODEL}")
+    # Daftarkan skema fallback otomatis demi kestabilan maksimal
+    primary_model = os.getenv("GEMINI_MODEL", "models/gemma-4-31b-it")
+    fallback_list = [primary_model]
+    for m in ["models/gemma-4-26b-a4b-it", "models/gemini-2.5-flash", "models/gemini-3.1-flash-lite"]:
+        if m not in fallback_list:
+            fallback_list.append(m)
 
-            response = client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=transcript,
-                config=types.GenerateContentConfig(
-                    system_instruction=system_prompt,
-                    temperature=0.7,
-                    max_output_tokens=512,
-                ),
-            )
+    last_error = None
+    for model_name in fallback_list:
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                logger.info(f"[LLM] Mengirim ke {model_name} (Percobaan {attempt}/{MAX_RETRIES})")
 
-            result_text = response.text.strip()
-            logger.info(f"[LLM] Response received ({len(result_text)} chars)")
-            return result_text
-
-        except Exception as e:
-            error_str = str(e).lower()
-
-            # Deteksi rate limit (429 / quota exceeded)
-            if "429" in error_str or "quota" in error_str or "rate" in error_str:
-                logger.warning(
-                    f"[LLM] Rate limit tercapai pada attempt {attempt}. "
-                    f"Menunggu {RETRY_SLEEP_SEC}s sebelum retry..."
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=transcript,
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_prompt,
+                        temperature=0.7,
+                        max_output_tokens=512,
+                    ),
                 )
-                if attempt < MAX_RETRIES:
-                    time.sleep(RETRY_SLEEP_SEC)
-                    continue
-                else:
-                    raise RuntimeError(
-                        f"Rate limit masih aktif setelah {MAX_RETRIES} percobaan. "
-                        f"Cek Request Per Minute (RPM) di Google AI Studio."
+
+                result_text = response.text.strip()
+                logger.info(f"[LLM] Respons sukses diterima dari {model_name} ({len(result_text)} karakter)")
+                return result_text
+
+            except Exception as e:
+                error_str = str(e).lower()
+                last_error = e
+
+                # Cek tipe error untuk menentukan strategi retry
+                is_rate_limit = "429" in error_str or "quota" in error_str or "rate" in error_str
+                is_server_error = "500" in error_str or "503" in error_str or "internal" in error_str or "service unavailable" in error_str
+
+                if is_rate_limit:
+                    logger.warning(
+                        f"[LLM] Rate limit tercapai pada {model_name}. "
+                        f"Menunggu {RETRY_SLEEP_SEC}s sebelum mencoba lagi..."
                     )
+                    if attempt < MAX_RETRIES:
+                        time.sleep(RETRY_SLEEP_SEC)
+                        continue
+                elif is_server_error:
+                    logger.warning(
+                        f"[LLM] Server Google mengalami gangguan 500/503 pada {model_name}. "
+                        f"Menunggu 2s sebelum mencoba lagi..."
+                    )
+                    if attempt < MAX_RETRIES:
+                        time.sleep(2)
+                        continue
 
-            # Error lain yang tidak perlu retry
-            logger.error(f"[LLM] Error tidak terduga: {e}")
-            raise RuntimeError(f"Gagal mendapatkan respons dari LLM: {e}")
+                # Jika sudah mencapai limit retry atau error permanen lainnya, beralih ke model fallback berikutnya
+                logger.error(f"[LLM] Gagal mendapatkan respons dari {model_name}: {e}")
+                break
 
-    raise RuntimeError("Gagal mendapatkan respons setelah semua percobaan.")
+    raise RuntimeError(f"Seluruh model LLM gagal merespons. Error terakhir: {last_error}")
 
 
 # ─── Test mandiri ─────────────────────────────────────────────────────────────

@@ -1,71 +1,59 @@
+"""
+app/stt.py — Speech-to-Text (Whisper.cpp)
+Transkripsi audio ke teks menggunakan whisper.cpp binary lokal.
+"""
+
 import os
 import subprocess
-from dotenv import load_dotenv
+import logging
 
-# Load environment variables
-load_dotenv()
+logger = logging.getLogger(__name__)
 
-# Konfigurasi path
-# Default ke hasil kompilasi whisper.cpp dari source (MinGW build)
-WHISPER_BIN = os.getenv("WHISPER_BIN", "models/whisper.cpp/build/bin/whisper-cli.exe")
-WHISPER_MODEL = os.getenv("WHISPER_MODEL", "models/whisper.cpp/models/ggml-small.bin")
+# Path langsung ke binary dan model whisper (tidak perlu .env)
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+WHISPER_BIN = os.path.join(ROOT_DIR, "models", "whisper.cpp", "build", "bin", "whisper-cli.exe")
+WHISPER_MODEL = os.path.join(ROOT_DIR, "models", "whisper.cpp", "models", "ggml-small.bin")
+
 
 def transcribe_speech_to_text(audio_path: str) -> str:
     """
-    Melakukan transkripsi audio ke teks menggunakan whisper.cpp secara dinamis.
-    Mendukung deteksi bahasa dan translasi opsional.
+    Melakukan transkripsi audio ke teks menggunakan whisper.cpp.
+    Mendukung deteksi bahasa otomatis untuk input multibahasa.
     """
     if not os.path.exists(audio_path):
-        raise FileNotFoundError(f"File audio tidak ditemukan di: {audio_path}")
-        
+        raise FileNotFoundError(f"File audio tidak ditemukan: {audio_path}")
     if not os.path.exists(WHISPER_BIN):
-        raise FileNotFoundError(f"Binary Whisper tidak ditemukan di: {WHISPER_BIN}. Pastikan sudah dikompilasi atau diunduh.")
-        
+        raise FileNotFoundError(f"Binary Whisper tidak ditemukan: {WHISPER_BIN}")
     if not os.path.exists(WHISPER_MODEL):
-        raise FileNotFoundError(f"Model Whisper tidak ditemukan di: {WHISPER_MODEL}. Jalankan download-ggml-model.sh.")
+        raise FileNotFoundError(f"Model Whisper tidak ditemukan: {WHISPER_MODEL}")
 
-    # Menjalankan whisper-cli
-    # Gunakan flag -f untuk file, -m untuk model, -nt untuk menghilangkan timestamp (no-timestamps), -l auto untuk deteksi bahasa
     command = [
         WHISPER_BIN,
         "-m", WHISPER_MODEL,
         "-f", audio_path,
-        "-nt",  # No timestamps
-        "-l", "auto" # Auto detect language (berguna untuk code-switching)
+        "-nt",          # No timestamps
+        "-l", "auto",   # Auto detect language
     ]
-    
+
     try:
-        # Eksekusi command dan tangkap outputnya
         result = subprocess.run(
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
             check=True,
-            encoding='utf-8'
+            encoding="utf-8",
         )
-        
-        # Ambil teks transkripsi (biasanya di stdout)
-        # Menghapus baris kosong dan whitespace ekstra
-        transcript = result.stdout.strip()
-        
-        # Filter jika whisper.cpp mengeluarkan info ke stdout yang tidak diperlukan (seperti tag [00:00:00])
+
         clean_lines = []
-        for line in transcript.split('\n'):
+        for line in result.stdout.strip().split("\n"):
             line = line.strip()
-            if line and not line.startswith('[') and not line.startswith('whisper_'):
+            if line and not line.startswith("[") and not line.startswith("whisper_"):
                 clean_lines.append(line)
-                
+
         return " ".join(clean_lines)
 
     except subprocess.CalledProcessError as e:
-        error_msg = e.stderr if e.stderr else str(e)
-        raise RuntimeError(f"Gagal melakukan transkripsi: {error_msg}")
+        raise RuntimeError(f"Gagal transkripsi: {e.stderr or str(e)}")
     except Exception as e:
-        raise RuntimeError(f"Error tidak terduga saat transkripsi: {str(e)}")
-
-# Fungsi pengujian mandiri
-if __name__ == "__main__":
-    print("Testing STT Module...")
-    print(f"Whisper Bin: {WHISPER_BIN}")
-    print(f"Whisper Model: {WHISPER_MODEL}")
+        raise RuntimeError(f"Error saat transkripsi: {str(e)}")
