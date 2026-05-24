@@ -1,12 +1,12 @@
 """
-gradio_app/app.py — Gradio Web UI v4 (SwitchSpeak Modular)
-Glassmorphism Dark Theme with Tailwind CSS.
-Modularized UI (views/, theme.py).
+gradio_app/app.py — Sonic Lingua Unified Gradio App
+Single sidebar, three switchable views. Full pipeline with detailed output.
 """
 
 import os
 import sys
 import time
+import threading
 import gradio as gr
 
 # Root path setup
@@ -24,51 +24,76 @@ from app.utils import normalize_transcript, tag_code_switching, get_dominant_lan
 from app.llm import generate_response
 from app.tts import synthesize_speech
 
-# Import theme and views
+# Import theme
 from gradio_app.theme import HEAD_HTML, CSS
-from gradio_app.views import upload_view, record_view, batch_view
 
 os.makedirs(os.path.join(OUTPUT_DIR, "audio"), exist_ok=True)
 
-# --- Pipeline Logic ---
+# --- Stop flag for cancellation ---
+_stop_flag = threading.Event()
+
+
+def request_stop():
+    _stop_flag.set()
+    return "⛔ Stop diminta. Menunggu proses saat ini selesai..."
+
+
+# --- Single Audio Pipeline (Upload / Record) ---
 
 def process_single_audio(audio_path, mode):
-    """Process satu file audio (Upload/Record) dengan logging bertahap."""
+    """Process satu file audio (Upload/Record) dengan logging bertahap dan output rapi."""
     if audio_path is None:
         yield None, None, "⚠️ Tidak ada audio. Silakan upload atau rekam terlebih dahulu."
         return
 
+    _stop_flag.clear()
     results = []
 
-    yield None, None, "**[1/5]** Menjalankan transkripsi STT (Whisper)..."
+    # ── Step 1: STT ──────────────────────────────────────────
+    yield None, None, "🎙️ **[1/5] Speech-to-Text** — Menjalankan transkripsi via Whisper..."
     try:
         t0 = time.time()
         raw = transcribe_speech_to_text(audio_path)
         lat_stt = round(time.time() - t0, 3)
     except Exception as e:
-        yield None, None, f"### ❌ Error pada STT\n\n{str(e)}"
+        yield None, None, f"❌ **Error pada STT**\n\n{str(e)}"
         return
 
     if not raw.strip():
-        yield None, None, "### ❌ Error pada STT\n\nTranskripsi kosong, audio tidak terdeteksi."
+        yield None, None, "❌ **Error pada STT** — Transkripsi kosong, audio tidak terdeteksi."
         return
 
-    yield None, None, f"**[2/5]** Preprocessing & normalisasi teks...\n\n**Transkripsi:** *{raw}*"
+    # ── Step 2: Preprocessing ────────────────────────────────
+    yield None, None, f"🔧 **[2/5] Preprocessing & Normalisasi**\n\n> Raw transcript: *{raw}*"
     normalized = normalize_transcript(raw)
     segments = tag_code_switching(normalized)
     dominant = get_dominant_language(normalized)
     ratio = compute_language_ratio(segments)
 
-    yield None, None, f"**[3/5]** Mengirim ke LLM (Gemma)...\n\n**Bahasa dominan:** {dominant} | **Rasio:** ID {ratio['ID']}% / EN {ratio['EN']}% / AR {ratio['AR']}%"
+    if _stop_flag.is_set():
+        yield None, None, "⛔ Proses dihentikan oleh pengguna."
+        return
+
+    # ── Step 3: LLM ──────────────────────────────────────────
+    yield None, None, (
+        f"🤖 **[3/5] Large Language Model** — Mengirim ke Gemma...\n\n"
+        f"> Normalized: *{normalized}*\n"
+        f"> Bahasa dominan: **{dominant}** | Rasio: ID {ratio['ID']}% / EN {ratio['EN']}% / AR {ratio['AR']}%"
+    )
     try:
         t1 = time.time()
         llm_response = generate_response(normalized, mode=mode)
         lat_llm = round(time.time() - t1, 3)
     except Exception as e:
-        yield None, None, f"### ❌ Error pada LLM\n\n{str(e)}"
+        yield None, None, f"❌ **Error pada LLM**\n\n{str(e)}"
         return
 
-    yield None, None, f"**[4/5]** Mensintesis audio respons (VITS TTS)...\n\n**Respons LLM:** *{llm_response[:150]}...*"
+    if _stop_flag.is_set():
+        yield None, None, "⛔ Proses dihentikan oleh pengguna."
+        return
+
+    # ── Step 4: TTS ──────────────────────────────────────────
+    yield None, None, f"🔊 **[4/5] Text-to-Speech** — Mensintesis audio respons via VITS...\n\n> LLM Response: *{llm_response[:200]}...*"
     try:
         t2 = time.time()
         from pathlib import Path
@@ -78,11 +103,12 @@ def process_single_audio(audio_path, mode):
         synthesize_speech(llm_response, output_wav)
         lat_tts = round(time.time() - t2, 3)
     except Exception as e:
-        yield None, None, f"### ❌ Error pada TTS\n\n{str(e)}"
+        yield None, None, f"❌ **Error pada TTS**\n\n{str(e)}"
         return
 
     lat_total = round(lat_stt + lat_llm + lat_tts, 3)
 
+    # ── Step 5: Evaluation & Result ──────────────────────────
     result = {
         "filename": os.path.basename(audio_path),
         "folder": "-",
@@ -110,26 +136,40 @@ def process_single_audio(audio_path, mode):
     csv_path = os.path.join(OUTPUT_DIR, "single_result.csv")
     results_to_csv(results, csv_path)
 
-    # Build tag string
-    seg_parts = [f"<span class='lang-badge lang-{seg['lang'].lower()}'>{seg['lang']}</span> <span style='color:#ccc'>{seg['text']}</span>" for seg in segments]
-    seg_html = "<div style='line-height:2'>" + " &middot; ".join(seg_parts) + "</div>"
-
+    # ── Build final detailed output ──────────────────────────
     final_log = (
-        f"### ✅ Pipeline Selesai\n\n"
-        f"**Transkripsi (Whisper)**\n{normalized}\n\n"
-        f"**Bahasa Dominan**\n"
-        f"<span class='lang-badge lang-{dominant.lower()}'>{dominant}</span>"
-        f" — ID {ratio['ID']}% / EN {ratio['EN']}% / AR {ratio['AR']}%\n\n"
-        f"**Segmen Code-Switching**\n{seg_html}\n\n---\n\n"
-        f"**Respons LLM**\n{llm_response}\n\n---\n\n"
-        f"**Latency** — STT: {lat_stt}s | LLM: {lat_llm}s | TTS: {lat_tts}s | Total: **{lat_total}s**"
+        f"✅ **Pipeline Selesai**\n\n"
+        f"---\n\n"
+        f"**📝 Transkripsi (Raw — Whisper)**\n"
+        f"> {raw}\n\n"
+        f"**🔧 Teks Setelah Preprocessing & Normalisasi**\n"
+        f"> {normalized}\n\n"
+        f"**🌐 Analisis Bahasa**\n"
+        f"- Bahasa Dominan: **{dominant}**\n"
+        f"- Rasio: ID {ratio['ID']}% · EN {ratio['EN']}% · AR {ratio['AR']}%\n\n"
+        f"---\n\n"
+        f"**🤖 Respons LLM (Gemma)**\n"
+        f"> {llm_response}\n\n"
+        f"---\n\n"
+        f"**📊 Evaluasi**\n\n"
+        f"| Metrik | Nilai |\n"
+        f"|--------|-------|\n"
+        f"| WER | N/A (tanpa referensi) |\n"
+        f"| CER | N/A (tanpa referensi) |\n"
+        f"| Latency STT | {lat_stt}s |\n"
+        f"| Latency LLM | {lat_llm}s |\n"
+        f"| Latency TTS | {lat_tts}s |\n"
+        f"| **Latency Total** | **{lat_total}s** |\n"
     )
 
     yield output_wav, csv_path, final_log
 
 
+# --- Batch Pipeline ---
+
 def process_batch_nlp(mode, progress=gr.Progress()):
     """Process semua file WAV dari corpus/audio/Audio_NLP/."""
+    _stop_flag.clear()
     wav_files = collect_corpus_files()
     total = len(wav_files)
 
@@ -137,13 +177,17 @@ def process_batch_nlp(mode, progress=gr.Progress()):
         yield None, f"⚠️ Tidak ada file WAV ditemukan di:\n`{CORPUS_DIR}`"
         return
 
-    yield None, f"Ditemukan **{total}** file audio. Memulai batch processing..."
+    yield None, f"📂 Ditemukan **{total}** file audio. Memulai batch processing..."
 
     results = []
     for i, wav_path in enumerate(wav_files):
+        if _stop_flag.is_set():
+            yield None, f"⛔ Batch dihentikan pada file {i}/{total}."
+            break
+
         fname = os.path.basename(wav_path)
         progress((i + 1) / total, desc=f"[{i+1}/{total}] {fname}")
-        yield None, f"**[{i+1}/{total}]** Processing: `{fname}`"
+        yield None, f"🎙️ **[{i+1}/{total}]** Processing: `{fname}`"
 
         try:
             result = run_pipeline(wav_path, mode=mode, output_dir=OUTPUT_DIR)
@@ -161,7 +205,7 @@ def process_batch_nlp(mode, progress=gr.Progress()):
     results_to_csv(results, csv_path)
 
     ok = sum(1 for r in results if r.get("status") == "success")
-    fail = total - ok
+    fail = len(results) - ok
 
     ok_results = [r for r in results if r.get("status") == "success"]
     avg_wer = "-"
@@ -179,73 +223,231 @@ def process_batch_nlp(mode, progress=gr.Progress()):
             avg_lat = f"{sum(lats)/len(lats):.2f}s"
 
     summary = (
-        f"### ⚙️ Batch Processing Selesai\n\n"
-        f"**Total File:** {total} | **Berhasil:** {ok} | **Gagal:** {fail}\n\n"
-        f"**Rata-rata WER:** {avg_wer} | **CER:** {avg_cer} | **Latency:** {avg_lat}\n\n"
-        f"CSV disimpan di `output/batch_results.csv`\n\n"
-        f"Audio output disimpan di `output/audio/`"
+        f"✅ **Batch Processing Selesai**\n\n"
+        f"| Metrik | Nilai |\n"
+        f"|--------|-------|\n"
+        f"| Total File | {total} |\n"
+        f"| Berhasil | {ok} |\n"
+        f"| Gagal | {fail} |\n"
+        f"| Rata-rata WER | {avg_wer} |\n"
+        f"| Rata-rata CER | {avg_cer} |\n"
+        f"| Rata-rata Latency | {avg_lat} |\n\n"
+        f"📁 CSV: `output/batch_results.csv`\n"
+        f"🔊 Audio: `output/audio/`"
     )
     yield csv_path, summary
 
 
-def clear_outputs():
-    return None, None, None, "*Menunggu input...*"
+def clear_single():
+    return None, None, None, ""
 
 
-# --- Gradio UI Layout ---
+def clear_record():
+    return None, None, None, ""
+
+
+# ═══════════════════════════════════════════════════════════════
+#  GRADIO UI — Unified Sidebar + Switchable Views
+# ═══════════════════════════════════════════════════════════════
 
 with gr.Blocks(css=CSS, head=HEAD_HTML, theme=gr.themes.Base()) as demo:
-    
-    # View 1: Upload (Sidebar layout)
-    with gr.Column(visible=True, elem_classes="w-full") as v_upload:
-        up_audio, up_mode, up_run, up_clear, up_out_audio, up_out_csv, up_log, btn_upload1, btn_record1, btn_batch1 = upload_view.build()
-        
-    # View 2: Record (TopNav layout)
-    with gr.Column(visible=False, elem_classes="w-full") as v_record:
-        rec_audio, rec_mode, rec_run, rec_clear, rec_out_audio, rec_out_csv, rec_log, btn_upload2, btn_record2, btn_batch2 = record_view.build()
 
-    # View 3: Batch (TopNav layout)
-    with gr.Column(visible=False, elem_classes="w-full") as v_batch:
-        bat_mode, bat_run, bat_out_csv, bat_log, btn_upload3, btn_record3, btn_batch3 = batch_view.build()
+    # ── Full-Width Title ─────────────────────────────────────
+    gr.HTML("""
+    <div class="page-header">
+        <h1>Multilingual Speech-to-Speech System</h1>
+        <div class="subtitle">
+            Saudi Tourism AI Assistant — Code-Switching Support
+            <strong>(ID / EN / AR)</strong>
+        </div>
+    </div>
+    """)
 
-    # --- Interactivity ---
+    with gr.Row(elem_classes="main-row"):
 
-    # Navigation Logic
+        # ── SHARED SIDEBAR ───────────────────────────────────
+        with gr.Column(scale=1, elem_classes="glass-card sidebar-col", min_width=220):
+            gr.HTML("""
+            <div class="sidebar-logo">
+                <span class="material-symbols-outlined logo-icon">graphic_eq</span>
+                <span class="logo-text">Sonic Lingua</span>
+            </div>
+            <p class="sidebar-section-label">Workflow</p>
+            """)
+            nav_upload = gr.Button("Upload Audio",  elem_classes="nav-btn nav-active")
+            nav_record = gr.Button("Record Audio",  elem_classes="nav-btn")
+            nav_batch  = gr.Button("Input Audio NLP", elem_classes="nav-btn")
+
+        # ── MAIN WORKSPACE ───────────────────────────────────
+        with gr.Column(scale=5):
+
+            # ═══ VIEW 1: UPLOAD AUDIO ════════════════════════
+            with gr.Column(visible=True) as v_upload:
+                with gr.Row():
+                    # Input Card
+                    with gr.Column(scale=3, elem_classes="glass-card"):
+                        gr.HTML("""<div class="card-header">
+                            <span class="material-symbols-outlined icon" style="color:#93c5fd;">input</span>
+                            <span class="label">Input Source</span>
+                        </div>""")
+                        up_audio = gr.Audio(sources=["upload"], type="filepath", label="Drop Audio Here")
+                        with gr.Row():
+                            with gr.Column(scale=2, min_width=160):
+                                gr.HTML('<p class="toggle-label">Output Language Mode</p>')
+                                up_mode = gr.Radio(
+                                    choices=[("Preserve", "preserve"), ("Normalize", "normalize")],
+                                    value="preserve", label="", container=False,
+                                    elem_classes="toggle-radio",
+                                )
+                            with gr.Column(scale=3, min_width=200):
+                                with gr.Row():
+                                    up_clear = gr.Button("Clear", variant="secondary")
+                                    up_stop  = gr.Button("⬛ Stop", variant="secondary")
+                                    up_run   = gr.Button("▶ Run Pipeline", variant="primary")
+
+                    # Results Card
+                    with gr.Column(scale=2, elem_classes="glass-card"):
+                        gr.HTML("""<div class="card-header">
+                            <span class="material-symbols-outlined icon" style="color:#c084fc;">output</span>
+                            <span class="label">Results</span>
+                        </div>""")
+                        up_out_audio = gr.Audio(label="Audio Response (TTS)", interactive=False)
+                        up_out_csv = gr.File(label="Download CSV Transcript", interactive=False)
+
+                # Logs Card (full width)
+                with gr.Column(elem_classes="glass-card"):
+                    gr.HTML("""<div class="card-header">
+                        <span class="material-symbols-outlined icon" style="color:#34d399;">terminal</span>
+                        <span class="label">Pipeline Logs</span>
+                    </div>""")
+                    up_log = gr.Markdown(value="*Menunggu input...*")
+
+            # ═══ VIEW 2: RECORD AUDIO ════════════════════════
+            with gr.Column(visible=False) as v_record:
+                with gr.Row():
+                    # Mic Card
+                    with gr.Column(scale=3, elem_classes="glass-card"):
+                        gr.HTML("""<div class="card-header">
+                            <span class="material-symbols-outlined icon" style="color:#93c5fd;">mic</span>
+                            <span class="label">Audio Input</span>
+                        </div>""")
+                        rec_audio = gr.Audio(sources=["microphone"], type="filepath", label="Record dari Microphone")
+
+                    # Settings Card
+                    with gr.Column(scale=2, elem_classes="glass-card"):
+                        gr.HTML("""<div class="card-header">
+                            <span class="material-symbols-outlined icon" style="color:#64748b;">tune</span>
+                            <span class="label">Mode Output Bahasa</span>
+                        </div>""")
+                        rec_mode = gr.Radio(
+                            choices=[("Preserve", "preserve"), ("Normalize", "normalize")],
+                            value="preserve", label="", container=False,
+                            elem_classes="toggle-radio",
+                        )
+                        gr.HTML('<div style="height:0.5rem;"></div>')
+                        with gr.Row():
+                            rec_clear = gr.Button("Clear", variant="secondary")
+                            rec_stop  = gr.Button("⬛ Stop", variant="secondary")
+                            rec_run   = gr.Button("▶ Run Pipeline", variant="primary")
+
+                # Results Card
+                with gr.Column(elem_classes="glass-card"):
+                    gr.HTML("""<div class="card-header">
+                        <span class="material-symbols-outlined icon" style="color:#c084fc;">output</span>
+                        <span class="label">Response</span>
+                    </div>""")
+                    with gr.Row():
+                        rec_out_audio = gr.Audio(label="Audio Respons (TTS)", interactive=False)
+                        rec_out_csv = gr.File(label="Download CSV", interactive=False)
+
+                # Logs Card
+                with gr.Column(elem_classes="glass-card"):
+                    gr.HTML("""<div class="card-header">
+                        <span class="material-symbols-outlined icon" style="color:#38bdf8;">terminal</span>
+                        <span class="label">Logs</span>
+                    </div>""")
+                    rec_log = gr.Markdown(value="*Menunggu input...*")
+
+            # ═══ VIEW 3: BATCH NLP ═══════════════════════════
+            with gr.Column(visible=False) as v_batch:
+                with gr.Row():
+                    # Batch Control Card
+                    with gr.Column(scale=2, elem_classes="glass-card"):
+                        gr.HTML("""<div class="card-header">
+                            <span class="material-symbols-outlined icon" style="color:#93c5fd;">settings_b_roll</span>
+                            <span class="label">Batch Control</span>
+                        </div>
+                        <p class="toggle-label">Source Directory</p>
+                        <div style="background:rgba(5,12,28,0.6);border:1px solid rgba(59,130,246,0.12);border-radius:0.625rem;padding:0.75rem;margin-bottom:1.25rem;">
+                            <p style="font-size:0.75rem;color:#64748b;margin:0 0 0.4rem 0;">Processing all WAV files from:</p>
+                            <span class="path-badge">corpus/audio/Audio_NLP/</span>
+                        </div>
+                        <p class="toggle-label">Output Language Mode</p>
+                        """)
+                        bat_mode = gr.Radio(
+                            choices=[("Preserve", "preserve"), ("Normalize", "normalize")],
+                            value="preserve", label="", container=False,
+                            elem_classes="toggle-radio",
+                        )
+                        gr.HTML('<div style="height:1rem;"></div>')
+                        with gr.Row():
+                            bat_stop = gr.Button("⬛ Stop", variant="secondary")
+                            bat_run  = gr.Button("▶ Start Processing Run", variant="primary")
+
+                    # Right Column: Logs + Results
+                    with gr.Column(scale=3):
+                        with gr.Column(elem_classes="glass-card"):
+                            gr.HTML("""<div class="card-header">
+                                <span class="material-symbols-outlined icon" style="color:#38bdf8;">terminal</span>
+                                <span class="label mono">system_process_log.sh</span>
+                            </div>""")
+                            bat_log = gr.Markdown(
+                                value="*# NLP Audio Batch Processor v2.4.1\n# Initialization complete. Waiting for user command...*"
+                            )
+
+                        with gr.Column(elem_classes="glass-card"):
+                            gr.HTML("""<div class="card-header">
+                                <span class="material-symbols-outlined icon" style="color:#b9c7e0;">analytics</span>
+                                <span class="label">Analysis Results</span>
+                            </div>""")
+                            bat_out_csv = gr.File(label="Download CSV", interactive=False)
+
+    # ═══════════════════════════════════════════════════════════
+    #  NAVIGATION LOGIC
+    # ═══════════════════════════════════════════════════════════
+
     def show_upload():
         return gr.update(visible=True), gr.update(visible=False), gr.update(visible=False)
-        
+
     def show_record():
         return gr.update(visible=False), gr.update(visible=True), gr.update(visible=False)
-        
+
     def show_batch():
         return gr.update(visible=False), gr.update(visible=False), gr.update(visible=True)
 
-    # Bind buttons from View 1 (Upload sidebar)
-    btn_upload1.click(show_upload, outputs=[v_upload, v_record, v_batch])
-    btn_record1.click(show_record, outputs=[v_upload, v_record, v_batch])
-    btn_batch1.click(show_batch, outputs=[v_upload, v_record, v_batch])
+    views = [v_upload, v_record, v_batch]
+    nav_upload.click(show_upload, outputs=views)
+    nav_record.click(show_record, outputs=views)
+    nav_batch.click(show_batch,  outputs=views)
 
-    # Bind buttons from View 2 (Record topnav)
-    btn_upload2.click(show_upload, outputs=[v_upload, v_record, v_batch])
-    btn_record2.click(show_record, outputs=[v_upload, v_record, v_batch])
-    btn_batch2.click(show_batch, outputs=[v_upload, v_record, v_batch])
+    # ═══════════════════════════════════════════════════════════
+    #  PIPELINE TRIGGERS
+    # ═══════════════════════════════════════════════════════════
 
-    # Bind buttons from View 3 (Batch topnav)
-    btn_upload3.click(show_upload, outputs=[v_upload, v_record, v_batch])
-    btn_record3.click(show_record, outputs=[v_upload, v_record, v_batch])
-    btn_batch3.click(show_batch, outputs=[v_upload, v_record, v_batch])
-
-    # Pipeline Triggers
+    # Upload
     up_run.click(process_single_audio, inputs=[up_audio, up_mode], outputs=[up_out_audio, up_out_csv, up_log])
-    up_clear.click(clear_outputs, outputs=[up_audio, up_out_audio, up_out_csv, up_log])
+    up_clear.click(clear_single, outputs=[up_audio, up_out_audio, up_out_csv, up_log])
+    up_stop.click(request_stop, outputs=[up_log])
 
+    # Record
     rec_run.click(process_single_audio, inputs=[rec_audio, rec_mode], outputs=[rec_out_audio, rec_out_csv, rec_log])
-    rec_clear.click(clear_outputs, outputs=[rec_audio, rec_out_audio, rec_out_csv, rec_log])
+    rec_clear.click(clear_record, outputs=[rec_audio, rec_out_audio, rec_out_csv, rec_log])
+    rec_stop.click(request_stop, outputs=[rec_log])
 
+    # Batch
     bat_run.click(process_batch_nlp, inputs=[bat_mode], outputs=[bat_out_csv, bat_log])
+    bat_stop.click(request_stop, outputs=[bat_log])
 
 
 if __name__ == "__main__":
     demo.launch(server_name="0.0.0.0", server_port=7860, share=False)
-
-
