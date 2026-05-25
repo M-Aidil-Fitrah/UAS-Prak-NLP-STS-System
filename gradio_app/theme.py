@@ -172,7 +172,6 @@ div[data-testid="block"],
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
-    padding: 0 !important;
 }
 
 /* ==========================================================
@@ -656,5 +655,20 @@ footer a, footer svg { opacity: 0.3 !important; }
 }
 .glass-card .prose li {
     margin-bottom: 0.2rem !important;
+}
+
+/* ==========================================================
+   20. HIDDEN TABS (Fixing Gradio Audio Bug)
+   ========================================================== */
+.hidden-tabs {
+    background: transparent !important;
+    border: none !important;
+}
+.hidden-tabs > .tab-nav,
+.hidden-tabs > div > .tab-nav,
+.hidden-tabs div[role="tablist"] {
+    display: none !important;
+    height: 0 !important;
+    visibility: hidden !important;
 }
 """

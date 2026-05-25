@@ -5,14 +5,29 @@ Single sidebar, three switchable views. Full pipeline with detailed output.
 
 import os
 import sys
+
+# 1. PATH SETUP (MUST BE BEFORE IMPORTING GRADIO/PYDUB)
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
+
+VENV_SCRIPTS = os.path.join(ROOT_DIR, "venv", "Scripts")
+if os.path.exists(os.path.join(VENV_SCRIPTS, "ffmpeg.exe")):
+    os.environ["PATH"] += os.pathsep + VENV_SCRIPTS
+    
+# Force pydub to see ffmpeg if it's imported later
+os.environ["FFMPEG_BINARY"] = os.path.join(VENV_SCRIPTS, "ffmpeg.exe")
+
 import time
 import threading
 import gradio as gr
 
-# Root path setup
-ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if ROOT_DIR not in sys.path:
-    sys.path.insert(0, ROOT_DIR)
+# Try to explicitly patch pydub (Gradio's internal audio processor)
+try:
+    import pydub
+    pydub.AudioSegment.converter = os.path.join(VENV_SCRIPTS, "ffmpeg.exe")
+except Exception:
+    pass
 
 # Import logic
 from app.pipeline import (
@@ -40,14 +55,50 @@ def request_stop():
 
 # --- Single Audio Pipeline (Upload / Record) ---
 
-def process_single_audio(audio_path, mode):
+def process_single_audio(audio_input, mode):
     """Process satu file audio (Upload/Record) dengan logging bertahap dan output rapi."""
-    if audio_path is None:
+    if audio_input is None:
         yield None, None, "⚠️ Tidak ada audio. Silakan upload atau rekam terlebih dahulu."
         return
 
     _stop_flag.clear()
     results = []
+    
+    # --- Bypassing Gradio's Filepath Logic for Microphone ---
+    import scipy.io.wavfile as wavfile
+    import tempfile
+    import numpy as np
+    
+    if isinstance(audio_input, tuple):
+        # Numpy array format: (sample_rate, numpy_data)
+        sr, y = audio_input
+        
+        # ── DIAGNOSTIC: Hardware Silence Detection ──
+        if len(y) == 0:
+            yield None, None, "❌ **Error:** Rekaman kosong (0 detik). Silakan tahan tombol record lebih lama."
+            return
+            
+        # Check if the audio is completely silent
+        # y can be int16 or float32. We check the max absolute amplitude.
+        max_amp = np.max(np.abs(y))
+        if max_amp < 10:  # Threshold for pure silence or extreme low volume
+            yield None, None, (
+                "❌ **Error Perangkat Keras (Microphone Mute/Salah Perangkat)**\n\n"
+                "Sistem mendeteksi **KEHENINGAN TOTAL** pada rekamanmu. Browser berhasil merekam durasi, "
+                "tetapi tidak ada suara yang masuk. Cara memperbaikinya:\n"
+                "1. Pastikan volume mikrofon di Windows tidak 0.\n"
+                "2. Cek apakah tombol *mute* di *headset* tertekan.\n"
+                "3. Di Google Chrome, klik icon gembok (atau icon mic) di address bar, pastikan *Microphone* mengarah ke perangkat yang benar (bukan Stereo Mix/Virtual Cable)."
+            )
+            return
+
+        # Convert to standard 16-bit PCM if needed, but scipy usually handles it
+        temp_wav = tempfile.mktemp(suffix=".wav")
+        wavfile.write(temp_wav, sr, y)
+        audio_path = temp_wav
+    else:
+        # String filepath (from Upload component)
+        audio_path = audio_input
 
     # ── Step 1: STT ──────────────────────────────────────────
     yield None, None, "🎙️ **[1/5] Speech-to-Text** — Menjalankan transkripsi via Whisper..."
@@ -280,155 +331,155 @@ with gr.Blocks(css=CSS, head=HEAD_HTML, theme=gr.themes.Base()) as demo:
 
         # ── MAIN WORKSPACE ───────────────────────────────────
         with gr.Column(scale=5):
+            with gr.Tabs(elem_classes="hidden-tabs") as tabs:
 
-            # ═══ VIEW 1: UPLOAD AUDIO ════════════════════════
-            with gr.Column(visible=True) as v_upload:
-                with gr.Row():
-                    # Input Card
-                    with gr.Column(scale=3, elem_classes="glass-card"):
+                # ═══ VIEW 1: UPLOAD AUDIO ════════════════════════
+                with gr.TabItem("Upload", id="tab_upload"):
+                    with gr.Row():
+                        # Input Card
+                        with gr.Column(scale=3, elem_classes="glass-card"):
+                            gr.HTML("""<div class="card-header">
+                                <span class="material-symbols-outlined icon" style="color:#93c5fd;">input</span>
+                                <span class="label">Input Source</span>
+                            </div>""")
+                            up_audio = gr.Audio(sources=["upload"], type="filepath", label="Drop Audio Here")
+                            with gr.Row():
+                                with gr.Column(scale=2, min_width=160):
+                                    gr.HTML('<p class="toggle-label">Output Language Mode</p>')
+                                    up_mode = gr.Radio(
+                                        choices=[("Preserve", "preserve"), ("Normalize", "normalize")],
+                                        value="preserve", label="", container=False,
+                                        elem_classes="toggle-radio",
+                                    )
+                                with gr.Column(scale=3, min_width=200):
+                                    with gr.Row():
+                                        up_clear = gr.Button("Clear", variant="secondary")
+                                        up_stop  = gr.Button("⬛ Stop", variant="secondary")
+                                        up_run   = gr.Button("▶ Run Pipeline", variant="primary")
+
+                        # Results Card
+                        with gr.Column(scale=2, elem_classes="glass-card"):
+                            gr.HTML("""<div class="card-header">
+                                <span class="material-symbols-outlined icon" style="color:#c084fc;">output</span>
+                                <span class="label">Results</span>
+                            </div>""")
+                            up_out_audio = gr.Audio(label="Audio Response (TTS)", interactive=False)
+                            up_out_csv = gr.File(label="Download CSV Transcript", interactive=False)
+
+                    # Logs Card (full width)
+                    with gr.Column(elem_classes="glass-card"):
                         gr.HTML("""<div class="card-header">
-                            <span class="material-symbols-outlined icon" style="color:#93c5fd;">input</span>
-                            <span class="label">Input Source</span>
+                            <span class="material-symbols-outlined icon" style="color:#34d399;">terminal</span>
+                            <span class="label">Pipeline Logs</span>
                         </div>""")
-                        up_audio = gr.Audio(sources=["upload"], type="filepath", label="Drop Audio Here")
-                        with gr.Row():
-                            with gr.Column(scale=2, min_width=160):
-                                gr.HTML('<p class="toggle-label">Output Language Mode</p>')
-                                up_mode = gr.Radio(
-                                    choices=[("Preserve", "preserve"), ("Normalize", "normalize")],
-                                    value="preserve", label="", container=False,
-                                    elem_classes="toggle-radio",
-                                )
-                            with gr.Column(scale=3, min_width=200):
-                                with gr.Row():
-                                    up_clear = gr.Button("Clear", variant="secondary")
-                                    up_stop  = gr.Button("⬛ Stop", variant="secondary")
-                                    up_run   = gr.Button("▶ Run Pipeline", variant="primary")
+                        up_log = gr.Markdown(value="*Menunggu input...*")
+
+                # ═══ VIEW 2: RECORD AUDIO ════════════════════════
+                with gr.TabItem("Record", id="tab_record"):
+                    with gr.Row():
+                        # Mic Card
+                        with gr.Column(scale=3, elem_classes="glass-card"):
+                            gr.HTML("""<div class="card-header">
+                                <span class="material-symbols-outlined icon" style="color:#93c5fd;">mic</span>
+                                <span class="label">Audio Input</span>
+                            </div>""")
+                            rec_audio = gr.Audio(sources=["microphone"], type="numpy", format="wav", label="Record dari Microphone")
+
+                        # Settings Card
+                        with gr.Column(scale=2, elem_classes="glass-card"):
+                            gr.HTML("""<div class="card-header">
+                                <span class="material-symbols-outlined icon" style="color:#64748b;">tune</span>
+                                <span class="label">Mode Output Bahasa</span>
+                            </div>""")
+                            rec_mode = gr.Radio(
+                                choices=[("Preserve", "preserve"), ("Normalize", "normalize")],
+                                value="preserve", label="", container=False,
+                                elem_classes="toggle-radio",
+                            )
+                            gr.HTML('<div style="height:0.5rem;"></div>')
+                            with gr.Row():
+                                rec_clear = gr.Button("Clear", variant="secondary")
+                                rec_stop  = gr.Button("⬛ Stop", variant="secondary")
+                                rec_run   = gr.Button("▶ Run Pipeline", variant="primary")
 
                     # Results Card
-                    with gr.Column(scale=2, elem_classes="glass-card"):
+                    with gr.Column(elem_classes="glass-card"):
                         gr.HTML("""<div class="card-header">
                             <span class="material-symbols-outlined icon" style="color:#c084fc;">output</span>
-                            <span class="label">Results</span>
+                            <span class="label">Response</span>
                         </div>""")
-                        up_out_audio = gr.Audio(label="Audio Response (TTS)", interactive=False)
-                        up_out_csv = gr.File(label="Download CSV Transcript", interactive=False)
-
-                # Logs Card (full width)
-                with gr.Column(elem_classes="glass-card"):
-                    gr.HTML("""<div class="card-header">
-                        <span class="material-symbols-outlined icon" style="color:#34d399;">terminal</span>
-                        <span class="label">Pipeline Logs</span>
-                    </div>""")
-                    up_log = gr.Markdown(value="*Menunggu input...*")
-
-            # ═══ VIEW 2: RECORD AUDIO ════════════════════════
-            with gr.Column(visible=False) as v_record:
-                with gr.Row():
-                    # Mic Card
-                    with gr.Column(scale=3, elem_classes="glass-card"):
-                        gr.HTML("""<div class="card-header">
-                            <span class="material-symbols-outlined icon" style="color:#93c5fd;">mic</span>
-                            <span class="label">Audio Input</span>
-                        </div>""")
-                        rec_audio = gr.Audio(sources=["microphone"], type="filepath", label="Record dari Microphone")
-
-                    # Settings Card
-                    with gr.Column(scale=2, elem_classes="glass-card"):
-                        gr.HTML("""<div class="card-header">
-                            <span class="material-symbols-outlined icon" style="color:#64748b;">tune</span>
-                            <span class="label">Mode Output Bahasa</span>
-                        </div>""")
-                        rec_mode = gr.Radio(
-                            choices=[("Preserve", "preserve"), ("Normalize", "normalize")],
-                            value="preserve", label="", container=False,
-                            elem_classes="toggle-radio",
-                        )
-                        gr.HTML('<div style="height:0.5rem;"></div>')
                         with gr.Row():
-                            rec_clear = gr.Button("Clear", variant="secondary")
-                            rec_stop  = gr.Button("⬛ Stop", variant="secondary")
-                            rec_run   = gr.Button("▶ Run Pipeline", variant="primary")
+                            rec_out_audio = gr.Audio(label="Audio Respons (TTS)", interactive=False)
+                            rec_out_csv = gr.File(label="Download CSV", interactive=False)
 
-                # Results Card
-                with gr.Column(elem_classes="glass-card"):
-                    gr.HTML("""<div class="card-header">
-                        <span class="material-symbols-outlined icon" style="color:#c084fc;">output</span>
-                        <span class="label">Response</span>
-                    </div>""")
+                    # Logs Card
+                    with gr.Column(elem_classes="glass-card"):
+                        gr.HTML("""<div class="card-header">
+                            <span class="material-symbols-outlined icon" style="color:#38bdf8;">terminal</span>
+                            <span class="label">Logs</span>
+                        </div>""")
+                        rec_log = gr.Markdown(value="*Menunggu input...*")
+
+                # ═══ VIEW 3: BATCH NLP ═══════════════════════════
+                with gr.TabItem("Batch", id="tab_batch"):
                     with gr.Row():
-                        rec_out_audio = gr.Audio(label="Audio Respons (TTS)", interactive=False)
-                        rec_out_csv = gr.File(label="Download CSV", interactive=False)
-
-                # Logs Card
-                with gr.Column(elem_classes="glass-card"):
-                    gr.HTML("""<div class="card-header">
-                        <span class="material-symbols-outlined icon" style="color:#38bdf8;">terminal</span>
-                        <span class="label">Logs</span>
-                    </div>""")
-                    rec_log = gr.Markdown(value="*Menunggu input...*")
-
-            # ═══ VIEW 3: BATCH NLP ═══════════════════════════
-            with gr.Column(visible=False) as v_batch:
-                with gr.Row():
-                    # Batch Control Card
-                    with gr.Column(scale=2, elem_classes="glass-card"):
-                        gr.HTML("""<div class="card-header">
-                            <span class="material-symbols-outlined icon" style="color:#93c5fd;">settings_b_roll</span>
-                            <span class="label">Batch Control</span>
-                        </div>
-                        <p class="toggle-label">Source Directory</p>
-                        <div style="background:rgba(5,12,28,0.6);border:1px solid rgba(59,130,246,0.12);border-radius:0.625rem;padding:0.75rem;margin-bottom:1.25rem;">
-                            <p style="font-size:0.75rem;color:#64748b;margin:0 0 0.4rem 0;">Processing all WAV files from:</p>
-                            <span class="path-badge">corpus/audio/Audio_NLP/</span>
-                        </div>
-                        <p class="toggle-label">Output Language Mode</p>
-                        """)
-                        bat_mode = gr.Radio(
-                            choices=[("Preserve", "preserve"), ("Normalize", "normalize")],
-                            value="preserve", label="", container=False,
-                            elem_classes="toggle-radio",
-                        )
-                        gr.HTML('<div style="height:1rem;"></div>')
-                        with gr.Row():
-                            bat_stop = gr.Button("⬛ Stop", variant="secondary")
-                            bat_run  = gr.Button("▶ Start Processing Run", variant="primary")
-
-                    # Right Column: Logs + Results
-                    with gr.Column(scale=3):
-                        with gr.Column(elem_classes="glass-card"):
+                        # Batch Control Card
+                        with gr.Column(scale=2, elem_classes="glass-card"):
                             gr.HTML("""<div class="card-header">
-                                <span class="material-symbols-outlined icon" style="color:#38bdf8;">terminal</span>
-                                <span class="label mono">system_process_log.sh</span>
-                            </div>""")
-                            bat_log = gr.Markdown(
-                                value="*# NLP Audio Batch Processor v2.4.1\n# Initialization complete. Waiting for user command...*"
+                                <span class="material-symbols-outlined icon" style="color:#93c5fd;">settings_b_roll</span>
+                                <span class="label">Batch Control</span>
+                            </div>
+                            <p class="toggle-label">Source Directory</p>
+                            <div style="background:rgba(5,12,28,0.6);border:1px solid rgba(59,130,246,0.12);border-radius:0.625rem;padding:0.75rem;margin-bottom:1.25rem;">
+                                <p style="font-size:0.75rem;color:#64748b;margin:0 0 0.4rem 0;">Processing all WAV files from:</p>
+                                <span class="path-badge">corpus/audio/Audio_NLP/</span>
+                            </div>
+                            <p class="toggle-label">Output Language Mode</p>
+                            """)
+                            bat_mode = gr.Radio(
+                                choices=[("Preserve", "preserve"), ("Normalize", "normalize")],
+                                value="preserve", label="", container=False,
+                                elem_classes="toggle-radio",
                             )
+                            gr.HTML('<div style="height:1rem;"></div>')
+                            with gr.Row():
+                                bat_stop = gr.Button("⬛ Stop", variant="secondary")
+                                bat_run  = gr.Button("▶ Start Processing Run", variant="primary")
 
-                        with gr.Column(elem_classes="glass-card"):
-                            gr.HTML("""<div class="card-header">
-                                <span class="material-symbols-outlined icon" style="color:#b9c7e0;">analytics</span>
-                                <span class="label">Analysis Results</span>
-                            </div>""")
-                            bat_out_csv = gr.File(label="Download CSV", interactive=False)
+                        # Right Column: Logs + Results
+                        with gr.Column(scale=3):
+                            with gr.Column(elem_classes="glass-card"):
+                                gr.HTML("""<div class="card-header">
+                                    <span class="material-symbols-outlined icon" style="color:#38bdf8;">terminal</span>
+                                    <span class="label mono">system_process_log.sh</span>
+                                </div>""")
+                                bat_log = gr.Markdown(
+                                    value="*# NLP Audio Batch Processor v2.4.1\n# Initialization complete. Waiting for user command...*"
+                                )
+
+                            with gr.Column(elem_classes="glass-card"):
+                                gr.HTML("""<div class="card-header">
+                                    <span class="material-symbols-outlined icon" style="color:#b9c7e0;">analytics</span>
+                                    <span class="label">Analysis Results</span>
+                                </div>""")
+                                bat_out_csv = gr.File(label="Download CSV", interactive=False)
 
     # ═══════════════════════════════════════════════════════════
     #  NAVIGATION LOGIC
     # ═══════════════════════════════════════════════════════════
 
     def show_upload():
-        return gr.update(visible=True), gr.update(visible=False), gr.update(visible=False)
+        return gr.Tabs(selected="tab_upload")
 
     def show_record():
-        return gr.update(visible=False), gr.update(visible=True), gr.update(visible=False)
+        return gr.Tabs(selected="tab_record")
 
     def show_batch():
-        return gr.update(visible=False), gr.update(visible=False), gr.update(visible=True)
+        return gr.Tabs(selected="tab_batch")
 
-    views = [v_upload, v_record, v_batch]
-    nav_upload.click(show_upload, outputs=views)
-    nav_record.click(show_record, outputs=views)
-    nav_batch.click(show_batch,  outputs=views)
+    nav_upload.click(show_upload, outputs=tabs)
+    nav_record.click(show_record, outputs=tabs)
+    nav_batch.click(show_batch,  outputs=tabs)
 
     # ═══════════════════════════════════════════════════════════
     #  PIPELINE TRIGGERS
