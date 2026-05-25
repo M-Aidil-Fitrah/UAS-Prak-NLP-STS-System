@@ -18,6 +18,12 @@ if os.path.exists(os.path.join(VENV_SCRIPTS, "ffmpeg.exe")):
 # Force pydub to see ffmpeg if it's imported later
 os.environ["FFMPEG_BINARY"] = os.path.join(VENV_SCRIPTS, "ffmpeg.exe")
 
+# 2. BYPASS WINDOWS TEMP FOLDER LOCKS (Antivirus/Defender)
+# Create a local temp folder so Windows Defender doesn't aggressively lock short audio files
+LOCAL_TEMP = os.path.join(ROOT_DIR, "gradio_temp")
+os.makedirs(LOCAL_TEMP, exist_ok=True)
+os.environ["GRADIO_TEMP_DIR"] = LOCAL_TEMP
+
 import time
 import threading
 import gradio as gr
@@ -55,50 +61,42 @@ def request_stop():
 
 # --- Single Audio Pipeline (Upload / Record) ---
 
-def process_single_audio(audio_input, mode):
+def process_single_audio(audio_input, mode, tts_voice):
     """Process satu file audio (Upload/Record) dengan logging bertahap dan output rapi."""
+    if audio_input is None:
+        yield None, None, "⚠️ Tidak ada audio. Silakan upload atau rekam terlebih dahulu."
+        return
+
+    # --- Bypassing Gradio's internal processing bugs ---
+    import subprocess
+    import tempfile
+    import os
+    
+    # Diagnostik jika filepath None
     if audio_input is None:
         yield None, None, "⚠️ Tidak ada audio. Silakan upload atau rekam terlebih dahulu."
         return
 
     _stop_flag.clear()
     results = []
-    
-    # --- Bypassing Gradio's Filepath Logic for Microphone ---
-    import scipy.io.wavfile as wavfile
-    import tempfile
-    import numpy as np
-    
-    if isinstance(audio_input, tuple):
-        # Numpy array format: (sample_rate, numpy_data)
-        sr, y = audio_input
-        
-        # ── DIAGNOSTIC: Hardware Silence Detection ──
-        if len(y) == 0:
-            yield None, None, "❌ **Error:** Rekaman kosong (0 detik). Silakan tahan tombol record lebih lama."
-            return
-            
-        # Check if the audio is completely silent
-        # y can be int16 or float32. We check the max absolute amplitude.
-        max_amp = np.max(np.abs(y))
-        if max_amp < 10:  # Threshold for pure silence or extreme low volume
-            yield None, None, (
-                "❌ **Error Perangkat Keras (Microphone Mute/Salah Perangkat)**\n\n"
-                "Sistem mendeteksi **KEHENINGAN TOTAL** pada rekamanmu. Browser berhasil merekam durasi, "
-                "tetapi tidak ada suara yang masuk. Cara memperbaikinya:\n"
-                "1. Pastikan volume mikrofon di Windows tidak 0.\n"
-                "2. Cek apakah tombol *mute* di *headset* tertekan.\n"
-                "3. Di Google Chrome, klik icon gembok (atau icon mic) di address bar, pastikan *Microphone* mengarah ke perangkat yang benar (bukan Stereo Mix/Virtual Cable)."
-            )
-            return
 
-        # Convert to standard 16-bit PCM if needed, but scipy usually handles it
-        temp_wav = tempfile.mktemp(suffix=".wav")
-        wavfile.write(temp_wav, sr, y)
+    # Pastikan file audio valid dan ukurannya tidak 0
+    if not os.path.exists(audio_input) or os.path.getsize(audio_input) == 0:
+        yield None, None, "❌ **Error:** File audio kosong. Harap rekam lebih lama (minimal 2-3 detik) agar browser sempat mengirimkan data suara."
+        return
+
+    # Paksa konversi ke WAV menggunakan FFmpeg sistem untuk menghindari bug Pydub
+    temp_wav = tempfile.mktemp(suffix=".wav")
+    try:
+        # Gunakan FFmpeg yang sudah didaftarkan di PATH
+        subprocess.run([
+            "ffmpeg", "-y", "-i", audio_input, 
+            "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", temp_wav
+        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         audio_path = temp_wav
-    else:
-        # String filepath (from Upload component)
-        audio_path = audio_input
+    except Exception as e:
+        yield None, None, f"❌ **Error Konversi Audio:** Gagal mengonversi rekaman menggunakan FFmpeg. {str(e)}"
+        return
 
     # ── Step 1: STT ──────────────────────────────────────────
     yield None, None, "🎙️ **[1/5] Speech-to-Text** — Menjalankan transkripsi via Whisper..."
@@ -151,7 +149,7 @@ def process_single_audio(audio_input, mode):
         stem = Path(audio_path).stem
         output_wav = os.path.join(OUTPUT_DIR, "audio", f"{stem}_response.wav")
         os.makedirs(os.path.dirname(output_wav), exist_ok=True)
-        synthesize_speech(llm_response, output_wav)
+        synthesize_speech(llm_response, output_wav, speaker_name=tts_voice)
         lat_tts = round(time.time() - t2, 3)
     except Exception as e:
         yield None, None, f"❌ **Error pada TTS**\n\n{str(e)}"
@@ -351,6 +349,12 @@ with gr.Blocks(css=CSS, head=HEAD_HTML, theme=gr.themes.Base()) as demo:
                                         value="preserve", label="", container=False,
                                         elem_classes="toggle-radio",
                                     )
+                                    gr.HTML('<p class="toggle-label" style="margin-top: 1rem;">TTS Voice</p>')
+                                    up_voice = gr.Radio(
+                                        choices=[("Gadis (Wanita)", "gadis"), ("Ardi (Pria)", "ardi"), ("Wibowo (Pria)", "wibowo")],
+                                        value="gadis", label="", container=False,
+                                        elem_classes="toggle-radio",
+                                    )
                                 with gr.Column(scale=3, min_width=200):
                                     with gr.Row():
                                         up_clear = gr.Button("Clear", variant="secondary")
@@ -383,17 +387,24 @@ with gr.Blocks(css=CSS, head=HEAD_HTML, theme=gr.themes.Base()) as demo:
                                 <span class="material-symbols-outlined icon" style="color:#93c5fd;">mic</span>
                                 <span class="label">Audio Input</span>
                             </div>""")
-                            rec_audio = gr.Audio(sources=["microphone"], type="numpy", format="wav", label="Record dari Microphone")
+                            rec_audio = gr.Audio(sources=["microphone"], type="filepath", label="Record dari Microphone")
 
                         # Settings Card
                         with gr.Column(scale=2, elem_classes="glass-card"):
                             gr.HTML("""<div class="card-header">
                                 <span class="material-symbols-outlined icon" style="color:#64748b;">tune</span>
-                                <span class="label">Mode Output Bahasa</span>
+                                <span class="label">Settings</span>
                             </div>""")
+                            gr.HTML('<p class="toggle-label">Output Language Mode</p>')
                             rec_mode = gr.Radio(
                                 choices=[("Preserve", "preserve"), ("Normalize", "normalize")],
                                 value="preserve", label="", container=False,
+                                elem_classes="toggle-radio",
+                            )
+                            gr.HTML('<p class="toggle-label" style="margin-top: 1rem;">TTS Voice</p>')
+                            rec_voice = gr.Radio(
+                                choices=[("Gadis (Wanita)", "gadis"), ("Ardi (Pria)", "ardi"), ("Wibowo (Pria)", "wibowo")],
+                                value="gadis", label="", container=False,
                                 elem_classes="toggle-radio",
                             )
                             gr.HTML('<div style="height:0.5rem;"></div>')
@@ -486,12 +497,12 @@ with gr.Blocks(css=CSS, head=HEAD_HTML, theme=gr.themes.Base()) as demo:
     # ═══════════════════════════════════════════════════════════
 
     # Upload
-    up_run.click(process_single_audio, inputs=[up_audio, up_mode], outputs=[up_out_audio, up_out_csv, up_log])
+    up_run.click(process_single_audio, inputs=[up_audio, up_mode, up_voice], outputs=[up_out_audio, up_out_csv, up_log])
     up_clear.click(clear_single, outputs=[up_audio, up_out_audio, up_out_csv, up_log])
     up_stop.click(request_stop, outputs=[up_log])
 
     # Record
-    rec_run.click(process_single_audio, inputs=[rec_audio, rec_mode], outputs=[rec_out_audio, rec_out_csv, rec_log])
+    rec_run.click(process_single_audio, inputs=[rec_audio, rec_mode, rec_voice], outputs=[rec_out_audio, rec_out_csv, rec_log])
     rec_clear.click(clear_record, outputs=[rec_audio, rec_out_audio, rec_out_csv, rec_log])
     rec_stop.click(request_stop, outputs=[rec_log])
 

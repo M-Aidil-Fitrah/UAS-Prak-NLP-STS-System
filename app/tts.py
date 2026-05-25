@@ -16,7 +16,8 @@ logger = logging.getLogger(__name__)
 BASE_DIR = Path(__file__).resolve().parent
 TTS_MODEL_PATH = str(BASE_DIR / "coqui_tts" / "data" / "checkpoint_1260000-inference.pth")
 TTS_CONFIG_PATH = str(BASE_DIR / "coqui_tts" / "data" / "config.json")
-TTS_SPEAKER_ID = 0
+# Model VITS Wikidepia menyediakan banyak suara. Suara jernih: 'gadis' (Wanita), 'ardi' (Pria), 'wibowo' (Pria).
+DEFAULT_SPEAKER = "gadis"
 
 # Lazy-loaded singleton
 _tts_instance = None
@@ -70,7 +71,7 @@ def _merge_short_segments(segments: list, min_words: int = 3) -> list:
     return merged
 
 
-def synthesize_speech(text: str, output_path: str) -> str:
+def synthesize_speech(text: str, output_path: str, speaker_name: str = DEFAULT_SPEAKER) -> str:
     """
     Konversi teks ke file audio WAV.
     Untuk teks multibahasa, sintesis per segmen lalu digabungkan.
@@ -93,21 +94,51 @@ def synthesize_speech(text: str, output_path: str) -> str:
     logger.info(f"[TTS] Mensintesis {len(segments)} segmen: {[s['lang'] for s in segments]}")
 
     if len(segments) == 1:
-        _synthesize_segment(tts, segments[0]["text"], output_path)
+        _synthesize_segment(tts, segments[0]["text"], output_path, speaker_name)
     else:
-        _synthesize_and_merge(tts, segments, output_path)
+        _synthesize_and_merge(tts, segments, output_path, speaker_name)
 
     logger.info(f"[TTS] Audio disimpan ke: {output_path}")
     return output_path
 
 
-def _synthesize_segment(tts, text: str, output_path: str) -> None:
+def _clean_indonesian_text_for_vits(text: str) -> str:
+    """
+    Model Wikidepia menggunakan IPA (Phonemes) murni.
+    Karakter aslinya: 'abdefhijklmnoprstuwxzŋɔəɛɡɪɲʃʊʒʔˈ'
+    Jika ada huruf yang tidak ada di atas (seperti 'y', 'c', 'g'), Coqui akan membuangnya.
+    Fungsi ini memetakan huruf standar ke IPA yang sesuai.
+    """
+    text = text.lower()
+    
+    # 1. Digraph (Dua huruf jadi satu simbol)
+    text = text.replace("ny", "ɲ")
+    text = text.replace("ng", "ŋ")
+    text = text.replace("sy", "ʃ")
+    
+    # 2. Pemetaan huruf tunggal
+    text = text.replace("c", "tʃ")
+    text = text.replace("j", "dʒ")
+    text = text.replace("y", "j") # 'y' dibaca 'j' dalam IPA
+    text = text.replace("g", "ɡ") # huruf 'g' biasa (U+0067) ke 'ɡ' IPA (U+0261)
+    text = text.replace("q", "k")
+    text = text.replace("v", "f")
+    text = text.replace("x", "ks")
+    
+    return text
+
+
+def _synthesize_segment(tts, text: str, output_path: str, speaker_name: str) -> None:
     """Sintesis satu segmen teks ke file WAV."""
-    speaker = tts.speakers[TTS_SPEAKER_ID] if getattr(tts, "is_multi_speaker", False) and tts.speakers else None
-    tts.tts_to_file(text=text, speaker=speaker, file_path=output_path)
+    speaker = speaker_name if getattr(tts, "is_multi_speaker", False) and tts.speakers else None
+    
+    # Bersihkan dan petakan ke IPA agar huruf 'y', 'g', 'c' tidak hilang!
+    cleaned_text = _clean_indonesian_text_for_vits(text)
+    
+    tts.tts_to_file(text=cleaned_text, speaker=speaker, file_path=output_path)
 
 
-def _synthesize_and_merge(tts, segments: list, output_path: str) -> None:
+def _synthesize_and_merge(tts, segments: list, output_path: str, speaker_name: str) -> None:
     """Sintesis per segmen ke file WAV temporer, lalu gabungkan."""
     import numpy as np
     import soundfile as sf
@@ -119,7 +150,7 @@ def _synthesize_and_merge(tts, segments: list, output_path: str) -> None:
     try:
         for i, seg in enumerate(segments):
             tmp_path = os.path.join(tempfile.gettempdir(), f"tts_seg_{uuid.uuid4().hex[:8]}_{i}.wav")
-            _synthesize_segment(tts, seg["text"], tmp_path)
+            _synthesize_segment(tts, seg["text"], tmp_path, speaker_name)
             temp_files.append(tmp_path)
 
         for tmp_path in temp_files:
