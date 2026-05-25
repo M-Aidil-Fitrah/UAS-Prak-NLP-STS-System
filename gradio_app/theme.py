@@ -135,7 +135,7 @@ div[data-testid="block"],
     padding: 1.5rem !important;
     margin-bottom: 0 !important;
     position: relative !important;
-    overflow: hidden !important;
+    overflow: visible !important;
 
     /* Scope vars so child Gradio components inherit transparency */
     --background-fill-primary:          transparent !important;
@@ -172,6 +172,25 @@ div[data-testid="block"],
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
+    padding: 0 !important;
+}
+
+/* Allow dropdown list to overflow card boundaries */
+.glass-card,
+.glass-card > div,
+.glass-card .block,
+.glass-card .wrap,
+.glass-card .gap-4,
+.glass-card .gap-2 {
+    overflow: visible !important;
+}
+
+/* Ensure Gradio row/col wrappers don't clip dropdown */
+.glass-card .flex,
+.glass-card .row,
+.glass-card [class*="gr-row"],
+.glass-card [class*="gr-col"] {
+    overflow: visible !important;
 }
 
 /* ==========================================================
@@ -204,11 +223,11 @@ div[data-testid="block"],
 }
 
 /* ==========================================================
-   6. PAGE HEADER (title + subtitle) — FULL WIDTH above sidebar
+   6. PAGE HEADER (title + subtitle)
    ========================================================== */
 .page-header {
     text-align: center;
-    padding: 1.25rem 0 1.5rem 0;
+    padding: 1.25rem 0 1.75rem 0;
     width: 100%;
 }
 .page-header h1 {
@@ -234,21 +253,6 @@ div[data-testid="block"],
 .page-header .subtitle strong {
     color: #93c5fd;
     font-weight: 600;
-}
-
-/* Toggle label (above radio) */
-.toggle-label {
-    font-size: 0.68rem;
-    color: #475569;
-    text-transform: uppercase;
-    letter-spacing: 0.14em;
-    margin-bottom: 0.4rem;
-    font-weight: 600;
-}
-
-/* Sidebar fixed min-height */
-.sidebar-col {
-    min-height: 70vh;
 }
 
 /* ==========================================================
@@ -588,87 +592,175 @@ footer a, footer svg { opacity: 0.3 !important; }
 .main-row { gap: 1rem !important; }
 
 /* ==========================================================
-   19. MARKDOWN LOG OUTPUT STYLES
+   19. DROPDOWN COMPONENT — Full glass styling
    ========================================================== */
-.glass-card .prose,
-.glass-card .markdown-body,
-.glass-card .md {
-    color: #dae2fc !important;
-    font-size: 0.82rem !important;
-    line-height: 1.65 !important;
-}
-.glass-card .prose h1,
-.glass-card .prose h2,
-.glass-card .prose h3 {
-    color: #dae2fc !important;
-    border: none !important;
-}
-.glass-card .prose strong {
-    color: #93c5fd !important;
-}
-.glass-card .prose blockquote {
-    border-left: 3px solid rgba(59,130,246,0.3) !important;
-    background: rgba(5,12,28,0.5) !important;
-    padding: 0.5rem 0.875rem !important;
-    border-radius: 0 0.5rem 0.5rem 0 !important;
-    color: #94a3b8 !important;
-    margin: 0.5rem 0 !important;
-    font-style: normal !important;
-}
-.glass-card .prose blockquote p {
-    color: #94a3b8 !important;
-}
-.glass-card .prose hr {
-    border-color: rgba(255,255,255,0.06) !important;
-    margin: 0.75rem 0 !important;
-}
-.glass-card .prose table {
-    width: 100% !important;
-    border-collapse: collapse !important;
-    font-size: 0.78rem !important;
-    margin: 0.5rem 0 !important;
-}
-.glass-card .prose th {
-    background: rgba(59,130,246,0.1) !important;
-    color: #93c5fd !important;
-    font-weight: 600 !important;
-    text-align: left !important;
-    padding: 0.4rem 0.75rem !important;
-    border-bottom: 1px solid rgba(255,255,255,0.1) !important;
-}
-.glass-card .prose td {
-    padding: 0.35rem 0.75rem !important;
-    border-bottom: 1px solid rgba(255,255,255,0.04) !important;
-    color: #c3c6d7 !important;
-}
-.glass-card .prose code {
-    background: rgba(5,12,28,0.6) !important;
-    color: #60a5fa !important;
-    padding: 0.1rem 0.35rem !important;
-    border-radius: 0.25rem !important;
-    font-family: 'JetBrains Mono', monospace !important;
-    font-size: 0.75rem !important;
-}
-.glass-card .prose ul, .glass-card .prose ol {
-    padding-left: 1.25rem !important;
-    color: #c3c6d7 !important;
-}
-.glass-card .prose li {
-    margin-bottom: 0.2rem !important;
+
+/* ── Dropdown trigger / input wrapper ── */
+.gradio-dropdown,
+[data-testid="dropdown"],
+.gr-dropdown {
+    --block-background-fill:  transparent !important;
+    --block-border-width:     0px !important;
+    --block-shadow:           none !important;
 }
 
-/* ==========================================================
-   20. HIDDEN TABS (Fixing Gradio Audio Bug)
-   ========================================================== */
-.hidden-tabs {
+/* The text input inside the dropdown trigger */
+.gradio-dropdown input,
+[data-testid="dropdown"] input {
+    background: rgba(5, 12, 28, 0.7) !important;
+    border: 1px solid rgba(255,255,255,0.09) !important;
+    border-radius: 0.5rem !important;
+    color: #dae2fc !important;
+    font-family: 'Inter', sans-serif !important;
+    font-size: 0.82rem !important;
+    padding: 0.45rem 0.875rem !important;
+    transition: border-color 0.15s ease !important;
+    cursor: pointer !important;
+}
+.gradio-dropdown input:focus,
+[data-testid="dropdown"] input:focus {
+    border-color: rgba(59,130,246,0.45) !important;
+    outline: none !important;
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.08) !important;
+}
+
+/* Dropdown arrow/chevron icon */
+.gradio-dropdown svg,
+[data-testid="dropdown"] svg {
+    color: #334155 !important;
+    fill: #334155 !important;
+    transition: color 0.15s ease !important;
+}
+.gradio-dropdown:hover svg,
+[data-testid="dropdown"]:hover svg {
+    color: #64748b !important;
+    fill: #64748b !important;
+}
+
+/* ── Dropdown label (above the input) ── */
+.gradio-dropdown label > span,
+[data-testid="dropdown"] label > span {
+    color: #334155 !important;
+    font-family: 'Inter', sans-serif !important;
+    font-size: 0.68rem !important;
+    font-weight: 600 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.12em !important;
+    margin-bottom: 0.35rem !important;
+    display: block !important;
+}
+
+/* ── The floating dropdown list (options panel) ── */
+ul.options,
+.options,
+[data-testid="dropdown"] ul,
+.gradio-dropdown ul,
+.dropdown-arrow + ul,
+div[id$="-dropdown"] ul {
+    background: rgba(8, 15, 35, 0.97) !important;
+    backdrop-filter: blur(24px) saturate(1.6) !important;
+    -webkit-backdrop-filter: blur(24px) saturate(1.6) !important;
+    border: 1px solid rgba(59,130,246,0.2) !important;
+    border-top: 1px solid rgba(255,255,255,0.08) !important;
+    border-radius: 0.75rem !important;
+    box-shadow:
+        0 12px 36px rgba(0,0,0,0.65),
+        0 0 0 1px rgba(255,255,255,0.04),
+        inset 0 1px 0 rgba(255,255,255,0.05) !important;
+    padding: 0.3rem !important;
+    margin-top: 4px !important;
+    max-height: 220px !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    z-index: 9999 !important;
+
+    /* Custom scrollbar agar tetap on-brand */
+    scrollbar-width: thin !important;
+    scrollbar-color: rgba(59,130,246,0.4) transparent !important;
+}
+
+/* Webkit scrollbar */
+ul.options::-webkit-scrollbar,
+[data-testid="dropdown"] ul::-webkit-scrollbar,
+.gradio-dropdown ul::-webkit-scrollbar {
+    width: 4px !important;
+}
+ul.options::-webkit-scrollbar-track,
+[data-testid="dropdown"] ul::-webkit-scrollbar-track,
+.gradio-dropdown ul::-webkit-scrollbar-track {
+    background: transparent !important;
+}
+ul.options::-webkit-scrollbar-thumb,
+[data-testid="dropdown"] ul::-webkit-scrollbar-thumb,
+.gradio-dropdown ul::-webkit-scrollbar-thumb {
+    background: rgba(59,130,246,0.4) !important;
+    border-radius: 2px !important;
+}
+
+/* ── Individual option items ── */
+ul.options li,
+.options li,
+[data-testid="dropdown"] ul li,
+.gradio-dropdown ul li {
+    background: transparent !important;
+    color: #64748b !important;
+    font-family: 'Inter', sans-serif !important;
+    font-size: 0.82rem !important;
+    font-weight: 400 !important;
+    padding: 0.42rem 0.875rem !important;
+    border-radius: 0.45rem !important;
+    cursor: pointer !important;
+    transition: background 0.12s ease, color 0.12s ease !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    letter-spacing: 0.01em !important;
+    list-style: none !important;
+}
+
+/* Hover state */
+ul.options li:hover,
+.options li:hover,
+[data-testid="dropdown"] ul li:hover,
+.gradio-dropdown ul li:hover {
+    background: rgba(37, 99, 235, 0.18) !important;
+    color: #93c5fd !important;
+}
+
+/* Selected / active item */
+ul.options li.selected,
+ul.options li[aria-selected="true"],
+.options li.selected,
+[data-testid="dropdown"] ul li.selected,
+[data-testid="dropdown"] ul li[aria-selected="true"],
+.gradio-dropdown ul li.selected {
+    background: rgba(37, 99, 235, 0.28) !important;
+    color: #93c5fd !important;
+    font-weight: 600 !important;
+}
+
+/* Checkmark icon inside selected item */
+ul.options li.selected svg,
+ul.options li[aria-selected="true"] svg {
+    color: #60a5fa !important;
+    fill: #60a5fa !important;
+    opacity: 1 !important;
+}
+
+/* Non-selected items — hide their checkmark placeholder */
+ul.options li:not(.selected) svg,
+ul.options li:not([aria-selected="true"]) svg {
+    opacity: 0 !important;
+}
+
+/* ── Dropdown container block — override Gradio block chrome ── */
+.gradio-dropdown .block,
+[data-testid="dropdown"] .block,
+.gradio-dropdown fieldset,
+[data-testid="dropdown"] fieldset {
     background: transparent !important;
     border: none !important;
-}
-.hidden-tabs > .tab-nav,
-.hidden-tabs > div > .tab-nav,
-.hidden-tabs div[role="tablist"] {
-    display: none !important;
-    height: 0 !important;
-    visibility: hidden !important;
+    box-shadow: none !important;
+    padding: 0 !important;
 }
 """

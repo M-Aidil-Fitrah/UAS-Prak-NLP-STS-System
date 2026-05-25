@@ -21,6 +21,30 @@ ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUTPUT_DIR = os.path.join(ROOT_DIR, "output")
 CORPUS_DIR = os.path.join(ROOT_DIR, "corpus", "audio", "Audio_NLP")
 
+# --- Dictionary / Kunci Jawaban ---
+REFERENCE_TRANSCRIPTS = {
+    "01": "Aku mau book flight ke Jeddah minggu depan, bisa bantu schedule?",
+    "02": "Aku butuh travel umrah simple tapi include Madinah visit",
+    "03": "Can you help aku arrange transport dari Jeddah ke Madinah tomorrow",
+    "04": "Explain step by step cara apply visa Saudi dengan benar",
+    "05": "يَا أَخِي، أُرِيدُ book flight إِلَى Jeddah الأُسْبُوع القَادِم. هَلْ bisa bantu أَجِد أَفْضَل schedule وَرِحْلَةً مُبَاشِرَةً؟",
+    "06": "أُرِيدُ arrange transport مِن Jeddah إِلَى Madinah غَدًا",
+    "07": "Book flight ke Jeddah lalu lanjut ke Madinah, schedule terbaik kapan",
+    "08": "اريد schedule trip dari Jeddah ke Makkah besok pagi",
+    "09": "ممكن book transport dari Makkah ke Madinah untuk besok",
+    "10": "Apa perbedaan umrah dan hajj secara detail dalam Islam",
+    "11": "Kenapa fasting di Ramadan itu wajib bagi Muslim",
+    "12": "Bagaimana proses visa Saudi untuk umrah dari Indonesia sekarang",
+    "13": "Jelaskan step by step cara booking flight ke Jeddah secara online",
+    "14": "How to prepare dokumen umrah dari Indonesia dengan benar",
+    "15": "Tolong buat checklist persiapan umrah termasuk barang wajib dibawa",
+    "16": "Guide aku cara pilih hotel di Makkah dekat Haram dengan budget terbatas",
+    "17": "Menurut kamu belajar bahasa Arab itu susah gak untuk pemula",
+    "18": "I feel overwhelmed dengan persiapan umrah, ada tips sederhana?",
+    "19": "احيانا saya bingung mulai dari mana untuk umrah",
+    "20": "Translate ke English: aku mau pergi ke Makkah minggu depan"
+}
+
 # CSV column order
 CSV_FIELDS = [
     "filename", "folder", "status", "mode",
@@ -52,13 +76,26 @@ def _levenshtein(s1: list, s2: list) -> int:
     return prev[-1]
 
 
+def _clean_for_wer(text: str) -> str:
+    import re
+    # Hapus harakat bahasa Arab (diacritics)
+    text = re.sub(r'[\u064B-\u065F\u0670]', '', text)
+    # Hapus tanda baca umum
+    text = re.sub(r'[.,!?؛،؟"\'\-_]', ' ', text)
+    # Bersihkan spasi ganda
+    text = re.sub(r'\s+', ' ', text)
+    return text.strip().lower()
+
+
 def calculate_wer(ref: str, hyp: str) -> float:
-    r, h = ref.lower().split(), hyp.lower().split()
+    r = _clean_for_wer(ref).split()
+    h = _clean_for_wer(hyp).split()
     return round(min(1.0, _levenshtein(r, h) / len(r)), 4) if r else (1.0 if h else 0.0)
 
 
 def calculate_cer(ref: str, hyp: str) -> float:
-    r, h = list(ref.lower()), list(hyp.lower())
+    r = list(_clean_for_wer(ref).replace(" ", ""))
+    h = list(_clean_for_wer(hyp).replace(" ", ""))
     return round(min(1.0, _levenshtein(r, h) / len(r)), 4) if r else (1.0 if h else 0.0)
 
 
@@ -112,6 +149,14 @@ def run_pipeline(audio_path: str, mode: str = "preserve",
     os.makedirs(audio_out_dir, exist_ok=True)
 
     filename = os.path.basename(audio_path)
+    
+    # Auto-detect reference text from filename (e.g., 2030_audio01.wav or 2030_01.wav)
+    if ref_text is None:
+        import re
+        match = re.search(r'(?:audio|_)?(\d{2})\.wav$', filename.lower())
+        if match:
+            ref_text = REFERENCE_TRANSCRIPTS.get(match.group(1))
+
     result = {
         "filename": filename,
         "folder": get_folder_label(audio_path),

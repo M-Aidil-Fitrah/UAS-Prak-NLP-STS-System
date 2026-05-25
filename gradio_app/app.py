@@ -39,6 +39,7 @@ except Exception:
 from app.pipeline import (
     run_pipeline, results_to_csv, collect_corpus_files,
     compute_language_ratio, OUTPUT_DIR, CORPUS_DIR,
+    REFERENCE_TRANSCRIPTS, calculate_wer, calculate_cer
 )
 from app.stt import transcribe_speech_to_text
 from app.utils import normalize_transcript, tag_code_switching, get_dominant_language
@@ -61,7 +62,7 @@ def request_stop():
 
 # --- Single Audio Pipeline (Upload / Record) ---
 
-def process_single_audio(audio_input, mode, tts_voice):
+def process_single_audio(audio_input, mode, tts_voice, ref_id):
     """Process satu file audio (Upload/Record) dengan logging bertahap dan output rapi."""
     if audio_input is None:
         yield None, None, "⚠️ Tidak ada audio. Silakan upload atau rekam terlebih dahulu."
@@ -157,9 +158,28 @@ def process_single_audio(audio_input, mode, tts_voice):
 
     lat_total = round(lat_stt + lat_llm + lat_tts, 3)
 
+    # ── Calculate WER / CER if Reference Provided ────────────
+    filename = os.path.basename(audio_path)
+    wer_val = "N/A"
+    cer_val = "N/A"
+    
+    ref_text = None
+    if ref_id and ref_id != "None":
+        ref_text = REFERENCE_TRANSCRIPTS.get(ref_id)
+    else:
+        # Fallback: Deteksi ID dari nama file (misal: 2030_audio05.wav -> 05)
+        import re
+        match = re.search(r'(?:audio|_)?(\d{2})\.wav$', filename.lower())
+        if match:
+            ref_text = REFERENCE_TRANSCRIPTS.get(match.group(1))
+
+    if ref_text:
+        wer_val = calculate_wer(ref_text, normalized)
+        cer_val = calculate_cer(ref_text, normalized)
+
     # ── Step 5: Evaluation & Result ──────────────────────────
     result = {
-        "filename": os.path.basename(audio_path),
+        "filename": filename,
         "folder": "-",
         "status": "success",
         "mode": mode,
@@ -170,8 +190,8 @@ def process_single_audio(audio_input, mode, tts_voice):
         "ratio_en": ratio["EN"],
         "ratio_ar": ratio["AR"],
         "language_segments": str(segments),
-        "wer": "N/A",
-        "cer": "N/A",
+        "wer": wer_val,
+        "cer": cer_val,
         "llm_response": llm_response,
         "tts_output_path": output_wav,
         "latency_stt": lat_stt,
@@ -356,6 +376,11 @@ with gr.Blocks(css=CSS, head=HEAD_HTML, theme=gr.themes.Base()) as demo:
                                         elem_classes="toggle-radio",
                                     )
                                 with gr.Column(scale=3, min_width=200):
+                                    up_ref = gr.Dropdown(
+                                        choices=["None"] + [f"{i:02d}" for i in range(1, 21)],
+                                        value="None", label="Evaluasi Kunci Jawaban (Opsional)", container=True,
+                                    )
+                                    gr.HTML('<div style="height:0.5rem;"></div>')
                                     with gr.Row():
                                         up_clear = gr.Button("Clear", variant="secondary")
                                         up_stop  = gr.Button("⬛ Stop", variant="secondary")
@@ -406,6 +431,10 @@ with gr.Blocks(css=CSS, head=HEAD_HTML, theme=gr.themes.Base()) as demo:
                                 choices=[("Gadis (Wanita)", "gadis"), ("Ardi (Pria)", "ardi"), ("Wibowo (Pria)", "wibowo")],
                                 value="gadis", label="", container=False,
                                 elem_classes="toggle-radio",
+                            )
+                            rec_ref = gr.Dropdown(
+                                choices=["None"] + [f"{i:02d}" for i in range(1, 21)],
+                                value="None", label="Evaluasi Kunci Jawaban (Opsional)", container=True,
                             )
                             gr.HTML('<div style="height:0.5rem;"></div>')
                             with gr.Row():
@@ -497,12 +526,12 @@ with gr.Blocks(css=CSS, head=HEAD_HTML, theme=gr.themes.Base()) as demo:
     # ═══════════════════════════════════════════════════════════
 
     # Upload
-    up_run.click(process_single_audio, inputs=[up_audio, up_mode, up_voice], outputs=[up_out_audio, up_out_csv, up_log])
+    up_run.click(process_single_audio, inputs=[up_audio, up_mode, up_voice, up_ref], outputs=[up_out_audio, up_out_csv, up_log])
     up_clear.click(clear_single, outputs=[up_audio, up_out_audio, up_out_csv, up_log])
     up_stop.click(request_stop, outputs=[up_log])
 
     # Record
-    rec_run.click(process_single_audio, inputs=[rec_audio, rec_mode, rec_voice], outputs=[rec_out_audio, rec_out_csv, rec_log])
+    rec_run.click(process_single_audio, inputs=[rec_audio, rec_mode, rec_voice, rec_ref], outputs=[rec_out_audio, rec_out_csv, rec_log])
     rec_clear.click(clear_record, outputs=[rec_audio, rec_out_audio, rec_out_csv, rec_log])
     rec_stop.click(request_stop, outputs=[rec_log])
 

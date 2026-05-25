@@ -52,3 +52,4 @@ desktop.ini
 
 /scripts/
 /gradio_temp/
+models/whisper.cpp
