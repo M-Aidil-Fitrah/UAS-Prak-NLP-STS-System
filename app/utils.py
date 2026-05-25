@@ -17,20 +17,39 @@ ARABIC_CHARS = set(
 
 LATIN_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
-# Kata-kata umum Bahasa Indonesia yang sering muncul
+# Kata-kata umum Bahasa Indonesia yang sering muncul (Ekspansi)
 COMMON_ID_WORDS = {
     "aku", "kamu", "dia", "kami", "mereka", "kita", "saya", "dan", "atau",
     "yang", "ini", "itu", "ada", "tidak", "bisa", "mau", "minta", "tolong",
-    "bantu", "pergi", "mau", "dari", "ke", "di", "untuk", "dengan", "cara",
+    "bantu", "pergi", "dari", "ke", "di", "untuk", "dengan", "cara",
     "bagaimana", "belajar", "susah", "gak", "dong", "nih", "lagi", "sudah",
     "belum", "punya", "perlu", "butuh", "coba", "jelaskan", "buat", "proses",
-    "step", "minggu", "depan", "besok", "sekarang", "nanti",
+    "step", "minggu", "depan", "besok", "sekarang", "nanti", "tadi", "lalu",
+    "pada", "dalam", "tapi", "tetapi", "juga", "ya", "bukan", "akan", "sedang",
+    "telah", "kalian", "apa", "siapa", "kapan", "dimana", "mengapa", "berapa",
+    "ingin", "suka", "tahu", "mengerti", "paham", "bikin", "kasih", "beri",
+    "ambil", "datang", "pulang", "makan", "minum", "tidur", "bangun", "mandi",
+    "jalan", "lari", "bicara", "ngobrol", "bilang", "kata", "buku", "meja",
+    "kursi", "mobil", "motor", "rumah", "sekolah", "kantor", "pasar", "toko",
+    "harga", "murah", "mahal", "bagus", "jelek", "besar", "kecil", "panjang",
+    "pendek", "baru", "lama", "tua", "muda", "panas", "dingin", "hari", "bulan",
+    "tahun", "jam", "menit", "detik", "pagi", "siang", "sore", "malam", "lusa",
+    "kemarin", "terus", "kemudian", "setelah", "sebelum", "karena", "sebab",
+    "akibat", "jadi", "maka", "jika", "kalau", "asalkan", "walaupun", "meskipun",
+    "namun", "sih", "kok", "kan", "lah", "deh"
 }
 
-# Kata kunci bahasa Arab (transliterasi umum)
+# Kata kunci bahasa Arab (transliterasi umum/romanisasi)
 COMMON_AR_WORDS = {
-    "uridu", "urīdu", "akhi", "ya", "ila", "min", "hal", "afdhal",
-    "rihlatan", "mubashirah", "qadim", "ghadan", "wa",
+    "uridu", "urīdu", "akhi", "ukhti", "ya", "ila", "ilā", "min", "hal", "afdhal",
+    "rihlatan", "mubashirah", "qadim", "ghadan", "wa", "fi", "ala", "an", "maa",
+    "man", "ayna", "kayfa", "mata", "kam", "ana", "anta", "anti", "huwa", "hiya",
+    "nahnu", "hum", "antum", "hadha", "hadhihi", "dhalika", "tilka", "na'am",
+    "la", "lā", "shukran", "afwan", "marhaban", "assalamu", "alaikum", "bismillah",
+    "insyaallah", "mashaallah", "alhamdulillah", "astaghfirullah", "subhanallah",
+    "allahu", "akbar", "masjid", "haram", "nabawi", "makkah", "madinah", "jeddah",
+    "saudi", "umrah", "hajj", "tawaf", "sa'i", "zamzam", "ihram", "miqat",
+    "mutawwif", "ustadz", "syekh", "qodal", "safaa", "marwah"
 }
 
 # Kata kunci bahasa Inggris yang biasa muncul dalam code-switching
@@ -38,8 +57,72 @@ COMMON_EN_WORDS = {
     "book", "flight", "schedule", "travel", "include", "visit", "help",
     "arrange", "transport", "tomorrow", "explain", "step", "apply", "visa",
     "how", "prepare", "documents", "can", "you", "the", "and", "to",
-    "from", "with", "simple", "online", "correct", "checklist",
+    "from", "with", "simple", "online", "correct", "checklist", "the", "be",
+    "of", "a", "in", "that", "have", "i", "it", "for", "not", "on", "he", "as",
+    "do", "at", "this", "but", "his", "by", "they", "we", "say", "her", "she",
+    "or", "an", "will", "my", "one", "all", "would", "there", "their", "what",
+    "so", "up", "out", "if", "about", "who", "get", "which", "go", "me", "when",
+    "make", "like", "time", "no", "just", "him", "know", "take", "people",
+    "into", "year", "your", "good", "some", "could", "them", "see", "other",
+    "than", "then", "now", "look", "only", "come", "its", "over", "think",
+    "also", "back", "after", "use", "two", "our", "work", "first", "well",
+    "way", "even", "new", "want", "because", "any", "these", "give", "day",
+    "most", "us", "yesterday", "today", "morning", "night", "hotel", "airport",
+    "ticket", "passport", "luggage", "baggage", "smooth", "safe", "trip", "journey"
 }
+
+
+# ─── Phonetic Lexical Correction (Error STT) ─────────────────────────────────
+# Memperbaiki halusinasi pendengaran STT (Whisper) berdasarkan kemiripan suara.
+PHONETIC_CORRECTIONS = {
+    # Kesalahan STT Inggris
+    r"\bflag\b": "flight",
+    r"\bflek\b": "flight",
+    r"\bsekedul\b": "schedule",
+    r"\bskedul\b": "schedule",
+    r"\bschedul\b": "schedule",
+    r"\barrenge\b": "arrange",
+    r"\btranspor\b": "transport",
+    r"\baply\b": "apply",
+    r"\bpespor\b": "passport",
+    r"\bpaspot\b": "passport",
+    r"\bcek lis\b": "checklist",
+    r"\bceklist\b": "checklist",
+
+    # Kesalahan Nama Tempat & Indonesia
+    r"\bkejada\b": "ke Jeddah",
+    r"\bke jada\b": "ke Jeddah",
+    r"\bjedah\b": "Jeddah",
+    r"\bmadina\b": "Madinah",
+    r"\bmekah\b": "Makkah",
+    r"\bmekkah\b": "Makkah",
+    r"\bfisa\b": "visa",
+
+    # Kesalahan Arab Transliterasi
+    r"\baki\b": "akhi",
+    r"\bukti\b": "ukhti",
+    r"\bkodal\b": "qodal",
+    r"\bkudal\b": "qodal",
+    r"\bmin jidah\b": "min Jeddah",
+    r"\bmin jida\b": "min Jeddah",
+    r"\bsapa\b": "safaa",
+    r"\bmarwa\b": "marwah",
+    r"\bjam jam\b": "zamzam",
+    r"\bjamzam\b": "zamzam",
+    
+    # Halusinasi Whisper Ekstrem (Code-Switching Arab-Inggris)
+    r"\bhri du\b": "uridu",
+    r"\bhri\b": "uridu",
+    r"\barin\b": "arrange",
+    r"\bsangspor\b": "transport",
+    r"\bsangspor\b": "transport"
+}
+
+def apply_phonetic_corrections(text: str) -> str:
+    """Koreksi kata salah dengar STT berdasarkan Regex dari PHONETIC_CORRECTIONS."""
+    for pattern, replacement in PHONETIC_CORRECTIONS.items():
+        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+    return text
 
 
 # ─── Normalisasi ─────────────────────────────────────────────────────────────
@@ -47,23 +130,39 @@ COMMON_EN_WORDS = {
 def normalize_transcript(text: str) -> str:
     """
     Membersihkan teks mentah hasil transkripsi STT:
-    - Menghapus spasi ganda
+    - Menghapus spasi ganda & newline berlebih
     - Menghilangkan karakter kontrol non-printable
     - Menormalkan tanda baca dan kutipan
-    - Trim whitespace di awal/akhir
+    - (Baru) Menghapus harakat/diacritics Arab & tatweel agar seragam
     """
     if not text:
         return ""
 
-    # Normalkan unicode (NFKC: kompatibilitas + komposisi)
-    text = unicodedata.normalize("NFKC", text)
+    # 1. Hapus Diakritik Global (Harakat Arab & Aksen Latin Whisper seperti Ḥ, ī)
+    # Ubah ke NFD untuk memecah huruf dan tanda bacanya (marks)
+    text = unicodedata.normalize("NFD", text)
+    # Filter buang semua 'Mn' (Mark, Nonspacing)
+    text = ''.join(c for c in text if unicodedata.category(c) != 'Mn')
+    # Kembalikan ke NFC murni
+    text = unicodedata.normalize("NFC", text)
 
     # Hapus karakter kontrol kecuali newline/tab
     text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", text)
 
+    # 2. Terapkan koreksi fonetik spesifik domain Umrah (setelah aksen bersih)
+    text = apply_phonetic_corrections(text)
+
     # Normalkan tanda kutip miring ke kutip lurus
     text = text.replace("\u2018", "'").replace("\u2019", "'")
     text = text.replace("\u201c", '"').replace("\u201d", '"')
+
+    # 3. Hapus Tatweel (garis panjang Arab) yang tersisa
+    text = re.sub(r'[\u0640]', '', text)
+
+    # Advanced NLP: Arabic Orthographic Normalization
+    text = re.sub(r'[أإآ]', 'ا', text) # Normalisasi Alif
+    text = re.sub(r'ة', 'ه', text)     # Normalisasi Ta Marbuthoh
+    text = re.sub(r'ى', 'ي', text)     # Normalisasi Alif Maqsura
 
     # Hapus spasi berulang
     text = re.sub(r" {2,}", " ", text)

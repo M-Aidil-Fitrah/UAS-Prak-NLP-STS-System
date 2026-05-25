@@ -79,7 +79,11 @@ def _levenshtein(s1: list, s2: list) -> int:
 def _clean_for_wer(text: str) -> str:
     import re
     # Hapus harakat bahasa Arab (diacritics)
-    text = re.sub(r'[\u064B-\u065F\u0670]', '', text)
+    text = re.sub(r'[\u064B-\u065F\u0670\u0640]', '', text)
+    # Normalisasi Ortografi Arab
+    text = re.sub(r'[أإآ]', 'ا', text)
+    text = re.sub(r'ة', 'ه', text)
+    text = re.sub(r'ى', 'ي', text)
     # Hapus tanda baca umum
     text = re.sub(r'[.,!?؛،؟"\'\-_]', ' ', text)
     # Bersihkan spasi ganda
