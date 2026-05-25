@@ -174,8 +174,8 @@ def process_single_audio(audio_input, mode, tts_voice, ref_id):
             ref_text = REFERENCE_TRANSCRIPTS.get(match.group(1))
 
     if ref_text:
-        wer_val = calculate_wer(ref_text, normalized)
-        cer_val = calculate_cer(ref_text, normalized)
+        wer_val = f"{calculate_wer(ref_text, normalized) * 100:.2f}%"
+        cer_val = f"{calculate_cer(ref_text, normalized) * 100:.2f}%"
 
     # ── Step 5: Evaluation & Result ──────────────────────────
     result = {
@@ -223,8 +223,8 @@ def process_single_audio(audio_input, mode, tts_voice, ref_id):
         f"**📊 Evaluasi**\n\n"
         f"| Metrik | Nilai |\n"
         f"|--------|-------|\n"
-        f"| WER | N/A (tanpa referensi) |\n"
-        f"| CER | N/A (tanpa referensi) |\n"
+        f"| WER | {wer_val} |\n"
+        f"| CER | {cer_val} |\n"
         f"| Latency STT | {lat_stt}s |\n"
         f"| Latency LLM | {lat_llm}s |\n"
         f"| Latency TTS | {lat_tts}s |\n"
