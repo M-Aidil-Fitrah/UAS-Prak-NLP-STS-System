@@ -1,7 +1,7 @@
 """
 app/main.py — FastAPI Backend Server
 Endpoint voice-chat end-to-end (STT -> Processing -> LLM -> TTS).
-Menggunakan app.pipeline untuk logika inti.
+Menggunakan app.pipeline untuk logika inti dan app.file_manager untuk manajemen file.
 """
 
 import os
@@ -14,6 +14,9 @@ from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.pipeline import run_pipeline
+from app.file_manager import (
+    TEMP_UPLOAD, cleanup_temp_file, cleanup_old_temp,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -32,10 +35,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-TEMP_DIR = "temp"
-OUTPUT_DIR = "output"
-os.makedirs(TEMP_DIR, exist_ok=True)
-os.makedirs(os.path.join(OUTPUT_DIR, "audio"), exist_ok=True)
+
+@app.on_event("startup")
+def startup_cleanup():
+    """Bersihkan file temp yang kadaluarsa (> 1 jam) saat server dijalankan."""
+    cleanup_old_temp(max_age_seconds=3600)
 
 
 @app.post("/voice-chat")
@@ -51,15 +55,15 @@ async def voice_chat_endpoint(
     logger.info(f"\n=== [Pipeline Started] Session: {session_id} | Mode: {mode} ===")
 
     input_ext = os.path.splitext(audio.filename or ".wav")[1] or ".wav"
-    temp_input = os.path.join(TEMP_DIR, f"input_{session_id}{input_ext}")
+    temp_input = os.path.join(TEMP_UPLOAD, f"api_{session_id}{input_ext}")
 
     try:
-        # Simpan audio input
+        # Simpan audio input ke temp/upload/
         with open(temp_input, "wb") as buf:
             shutil.copyfileobj(audio.file, buf)
 
-        # Jalankan pipeline
-        result = run_pipeline(temp_input, mode=mode, output_dir=OUTPUT_DIR)
+        # Jalankan pipeline (mode upload)
+        result = run_pipeline(temp_input, mode=mode, pipeline_mode="upload")
 
         if result["status"] != "success":
             raise RuntimeError(result.get("error", "Pipeline gagal"))
@@ -70,10 +74,9 @@ async def voice_chat_endpoint(
 
         logger.info(f"=== [Pipeline Finished] Session: {session_id} ===")
 
-        # Kirim audio + metadata via URL-encoded headers
         headers = {
             "X-Transcription": urllib.parse.quote(result.get("raw_transcript", "")),
-            "X-LLM-Response": urllib.parse.quote(result.get("llm_response", "")),
+            "X-LLM-Response":  urllib.parse.quote(result.get("llm_response", "")),
             "Access-Control-Expose-Headers": "X-Transcription, X-LLM-Response",
         }
         return FileResponse(
@@ -89,22 +92,10 @@ async def voice_chat_endpoint(
         logger.error(f"[Pipeline Error]: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
     finally:
-        _safe_delete(temp_input)
+        cleanup_temp_file(temp_input)
 
 
 @app.on_event("shutdown")
-def cleanup_temp():
-    """Bersihkan folder temp saat server dimatikan."""
-    if os.path.exists(TEMP_DIR):
-        logger.info("Cleaning up temp directory...")
-        for f in os.listdir(TEMP_DIR):
-            if f != ".gitkeep":
-                _safe_delete(os.path.join(TEMP_DIR, f))
-
-
-def _safe_delete(path: str):
-    try:
-        if os.path.exists(path):
-            os.remove(path)
-    except Exception as e:
-        logger.warning(f"Gagal hapus {path}: {e}")
+def shutdown_cleanup():
+    """Bersihkan semua file temp upload saat server dimatikan."""
+    cleanup_old_temp(max_age_seconds=0)  # max_age=0 hapus semua

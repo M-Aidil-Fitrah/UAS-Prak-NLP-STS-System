@@ -5,6 +5,7 @@ Digunakan oleh FastAPI (main.py) dan Gradio (app.py).
 """
 
 import os
+import re
 import csv
 import time
 import logging
@@ -14,12 +15,13 @@ from app.stt import transcribe_speech_to_text
 from app.utils import normalize_transcript, tag_code_switching, get_dominant_language
 from app.llm import generate_response
 from app.tts import synthesize_speech
+from app.file_manager import (
+    OUTPUT_DIR, CORPUS_DIR,
+    get_output_audio_path, get_batch_csv_path, get_batch_checkpoint_path,
+    OUTPUT_BATCH,
+)
 
 logger = logging.getLogger(__name__)
-
-ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUTPUT_DIR = os.path.join(ROOT_DIR, "output")
-CORPUS_DIR = os.path.join(ROOT_DIR, "corpus", "audio", "Audio_NLP")
 
 # --- Dictionary / Kunci Jawaban ---
 REFERENCE_TRANSCRIPTS = {
@@ -115,7 +117,37 @@ def compute_language_ratio(segments: list) -> dict:
     return ratio
 
 
-# --- Corpus Scanner ---
+# --- Corpus Scanner & Validasi Nama File ---
+
+# Pola nama file sesuai dictionary.md: {id}_{utteranceid}.wav
+# id       = 4 digit (2 digit awal + 2 digit akhir NPM)
+# uttid    = 2 digit angka (01–20)
+_FILENAME_RE = re.compile(r"^(\d{4})_(\d{2})\.wav$", re.IGNORECASE)
+
+
+def validate_filename(filename: str) -> tuple[bool, str, str, str]:
+    """
+    Validasi nama file audio sesuai format dictionary.md: {id}_{uttid}.wav
+
+    Returns:
+        (is_valid, student_id, utterance_id, reason)
+        Jika tidak valid, student_id dan utterance_id adalah string kosong.
+    """
+    match = _FILENAME_RE.match(filename)
+    if not match:
+        return False, "", "", f"Format tidak sesuai (harusnya NNNN_NN.wav), dapat: '{filename}'"
+
+    student_id   = match.group(1)
+    utterance_id = match.group(2)
+
+    if utterance_id not in REFERENCE_TRANSCRIPTS:
+        return (
+            False, student_id, utterance_id,
+            f"Utterance ID '{utterance_id}' tidak ada di kamus (01–20)"
+        )
+
+    return True, student_id, utterance_id, ""
+
 
 def collect_corpus_files(corpus_dir: str = None) -> list:
     """Scan Audio_NLP directory untuk semua file WAV (termasuk subdirektori)."""
@@ -127,6 +159,38 @@ def collect_corpus_files(corpus_dir: str = None) -> list:
             if f.lower().endswith(".wav"):
                 wav_files.append(os.path.join(root, f))
     return wav_files
+
+
+def collect_corpus_files_with_meta(corpus_dir: str = None) -> list:
+    """
+    Scan Audio_NLP dan kembalikan metadata validasi per file.
+
+    Returns:
+        list of dict: {
+            "path": str,
+            "filename": str,
+            "folder": str,
+            "is_valid": bool,
+            "student_id": str,
+            "utterance_id": str,
+            "reason": str,
+        }
+    """
+    files = collect_corpus_files(corpus_dir)
+    meta = []
+    for wav_path in files:
+        fname = os.path.basename(wav_path)
+        is_valid, sid, uid, reason = validate_filename(fname)
+        meta.append({
+            "path":         wav_path,
+            "filename":     fname,
+            "folder":       get_folder_label(wav_path),
+            "is_valid":     is_valid,
+            "student_id":   sid,
+            "utterance_id": uid,
+            "reason":       reason,
+        })
+    return meta
 
 
 def get_folder_label(audio_path: str) -> str:
@@ -141,23 +205,26 @@ def get_folder_label(audio_path: str) -> str:
 # --- Core Pipeline ---
 
 def run_pipeline(audio_path: str, mode: str = "preserve",
-                 output_dir: str = None, ref_text: str = None) -> dict:
+                 pipeline_mode: str = "batch",
+                 ref_text: str = None) -> dict:
     """
     Jalankan full pipeline pada satu file audio.
-    Returns dict berisi seluruh hasil dan metrik.
-    """
-    if output_dir is None:
-        output_dir = OUTPUT_DIR
 
-    audio_out_dir = os.path.join(output_dir, "audio")
-    os.makedirs(audio_out_dir, exist_ok=True)
+    Args:
+        audio_path    : path ke file audio input
+        mode          : "preserve" atau "normalize" (mode LLM)
+        pipeline_mode : "upload", "record", atau "batch" (menentukan folder output)
+        ref_text      : teks referensi untuk WER/CER; None = auto-detect dari nama file
+
+    Returns:
+        dict berisi seluruh hasil dan metrik.
+    """
 
     filename = os.path.basename(audio_path)
-    
-    # Auto-detect reference text from filename (e.g., 2030_audio01.wav or 2030_01.wav)
+
+    # Auto-detect reference text dari nama file (format: {id}_{uttid}.wav)
     if ref_text is None:
-        import re
-        match = re.search(r'(?:audio|_)?(\d{2})\.wav$', filename.lower())
+        match = re.search(r"_(\d{2})\.wav$", filename.lower())
         if match:
             ref_text = REFERENCE_TRANSCRIPTS.get(match.group(1))
 
@@ -213,7 +280,7 @@ def run_pipeline(audio_path: str, mode: str = "preserve",
         # 6. TTS
         t2 = time.time()
         stem = Path(audio_path).stem
-        output_wav = os.path.join(audio_out_dir, f"{stem}_response.wav")
+        output_wav = get_output_audio_path(pipeline_mode, stem)
         synthesize_speech(llm_response, output_wav)
         result["latency_tts"] = round(time.time() - t2, 3)
         result["tts_output_path"] = output_wav
@@ -235,7 +302,7 @@ def run_pipeline(audio_path: str, mode: str = "preserve",
 def results_to_csv(results: list, csv_path: str = None) -> str:
     """Export daftar hasil pipeline ke file CSV."""
     if csv_path is None:
-        csv_path = os.path.join(OUTPUT_DIR, "pipeline_results.csv")
+        csv_path = get_batch_csv_path()
 
     os.makedirs(os.path.dirname(csv_path) or ".", exist_ok=True)
 
@@ -247,3 +314,14 @@ def results_to_csv(results: list, csv_path: str = None) -> str:
 
     logger.info(f"CSV disimpan ke: {csv_path}")
     return csv_path
+
+
+def save_checkpoint(results: list) -> None:
+    """Simpan checkpoint CSV sementara setiap N file agar progress tidak hilang jika terhenti."""
+    if not results:
+        return
+    try:
+        results_to_csv(results, get_batch_checkpoint_path())
+        logger.info(f"[Checkpoint] Disimpan ({len(results)} file)")
+    except Exception as e:
+        logger.warning(f"[Checkpoint] Gagal menyimpan: {e}")

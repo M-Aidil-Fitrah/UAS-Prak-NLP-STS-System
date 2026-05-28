@@ -20,7 +20,7 @@ os.environ["FFMPEG_BINARY"] = os.path.join(VENV_SCRIPTS, "ffmpeg.exe")
 
 # 2. BYPASS WINDOWS TEMP FOLDER LOCKS (Antivirus/Defender)
 # Create a local temp folder so Windows Defender doesn't aggressively lock short audio files
-LOCAL_TEMP = os.path.join(ROOT_DIR, "gradio_temp")
+LOCAL_TEMP = os.path.join(ROOT_DIR, "temp", "upload")
 os.makedirs(LOCAL_TEMP, exist_ok=True)
 os.environ["GRADIO_TEMP_DIR"] = LOCAL_TEMP
 
@@ -37,14 +37,19 @@ except Exception:
 
 # Import logic
 from app.pipeline import (
-    run_pipeline, results_to_csv, collect_corpus_files,
-    compute_language_ratio, OUTPUT_DIR, CORPUS_DIR,
-    REFERENCE_TRANSCRIPTS, calculate_wer, calculate_cer
+    run_pipeline, results_to_csv, collect_corpus_files_with_meta,
+    compute_language_ratio, REFERENCE_TRANSCRIPTS, calculate_wer, calculate_cer,
+    save_checkpoint
 )
 from app.stt import transcribe_speech_to_text
 from app.utils import normalize_transcript, tag_code_switching, get_dominant_language
 from app.llm import generate_response
 from app.tts import synthesize_speech
+from app.file_manager import (
+    get_temp_path, get_output_audio_path, get_batch_csv_path,
+    cleanup_temp_file, cleanup_output_file, CORPUS_DIR, OUTPUT_DIR
+)
+from app.evaluator import build_eval_dataframe, build_avg_charts
 
 # Import theme
 from gradio_app.theme import HEAD_HTML, CSS
@@ -60,10 +65,8 @@ def request_stop():
     return "⛔ Stop diminta. Menunggu proses saat ini selesai..."
 
 
-# --- Single Audio Pipeline (Upload / Record) ---
-
-def process_single_audio(audio_input, mode, tts_voice, ref_id):
-    """Process satu file audio (Upload/Record) dengan logging bertahap dan output rapi."""
+def _process_single_audio(audio_input, mode, tts_voice, ref_id, pipeline_mode):
+    """Process satu file audio dengan logging bertahap dan output rapi."""
     if audio_input is None:
         yield None, None, "⚠️ Tidak ada audio. Silakan upload atau rekam terlebih dahulu."
         return
@@ -73,29 +76,24 @@ def process_single_audio(audio_input, mode, tts_voice, ref_id):
     import tempfile
     import os
     
-    # Diagnostik jika filepath None
-    if audio_input is None:
-        yield None, None, "⚠️ Tidak ada audio. Silakan upload atau rekam terlebih dahulu."
-        return
-
     _stop_flag.clear()
     results = []
 
     # Pastikan file audio valid dan ukurannya tidak 0
     if not os.path.exists(audio_input) or os.path.getsize(audio_input) == 0:
-        yield None, None, "❌ **Error:** File audio kosong. Harap rekam lebih lama (minimal 2-3 detik) agar browser sempat mengirimkan data suara."
+        yield None, None, "❌ **Error:** File audio kosong. Harap rekam lebih lama (minimal 2-3 detik)."
         return
 
-    # Paksa konversi ke WAV menggunakan FFmpeg sistem untuk menghindari bug Pydub
-    temp_wav = tempfile.mktemp(suffix=".wav")
+    # Paksa konversi ke WAV menggunakan FFmpeg sistem
+    temp_wav = get_temp_path(pipeline_mode)
     try:
-        # Gunakan FFmpeg yang sudah didaftarkan di PATH
         subprocess.run([
             "ffmpeg", "-y", "-i", audio_input, 
             "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", temp_wav
         ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         audio_path = temp_wav
     except Exception as e:
+        cleanup_temp_file(temp_wav)
         yield None, None, f"❌ **Error Konversi Audio:** Gagal mengonversi rekaman menggunakan FFmpeg. {str(e)}"
         return
 
@@ -148,7 +146,7 @@ def process_single_audio(audio_input, mode, tts_voice, ref_id):
         t2 = time.time()
         from pathlib import Path
         stem = Path(audio_path).stem
-        output_wav = os.path.join(OUTPUT_DIR, "audio", f"{stem}_response.wav")
+        output_wav = get_output_audio_path(pipeline_mode, stem)
         os.makedirs(os.path.dirname(output_wav), exist_ok=True)
         synthesize_speech(llm_response, output_wav, speaker_name=tts_voice)
         lat_tts = round(time.time() - t2, 3)
@@ -202,7 +200,7 @@ def process_single_audio(audio_input, mode, tts_voice, ref_id):
     }
     results.append(result)
 
-    csv_path = os.path.join(OUTPUT_DIR, "single_result.csv")
+    csv_path = os.path.join(OUTPUT_DIR, pipeline_mode, f"result_{stem}.csv")
     results_to_csv(results, csv_path)
 
     # ── Build final detailed output ──────────────────────────
@@ -231,7 +229,16 @@ def process_single_audio(audio_input, mode, tts_voice, ref_id):
         f"| **Latency Total** | **{lat_total}s** |\n"
     )
 
+    cleanup_temp_file(temp_wav)
     yield output_wav, csv_path, final_log
+
+
+def process_upload(audio_input, mode, tts_voice, ref_id):
+    yield from _process_single_audio(audio_input, mode, tts_voice, ref_id, "upload")
+
+
+def process_record(audio_input, mode, tts_voice, ref_id):
+    yield from _process_single_audio(audio_input, mode, tts_voice, ref_id, "record")
 
 
 # --- Batch Pipeline ---
@@ -239,57 +246,70 @@ def process_single_audio(audio_input, mode, tts_voice, ref_id):
 def process_batch_nlp(mode, progress=gr.Progress()):
     """Process semua file WAV dari corpus/audio/Audio_NLP/."""
     _stop_flag.clear()
-    wav_files = collect_corpus_files()
-    total = len(wav_files)
+    file_meta = collect_corpus_files_with_meta()
+    total = len(file_meta)
 
     if total == 0:
-        yield None, f"⚠️ Tidak ada file WAV ditemukan di:\n`{CORPUS_DIR}`"
+        yield None, None, None, f"⚠️ Tidak ada file WAV ditemukan di:\n`{CORPUS_DIR}`"
         return
 
-    yield None, f"📂 Ditemukan **{total}** file audio. Memulai batch processing..."
+    valid_files = [m for m in file_meta if m["is_valid"]]
+    invalid_files = [m for m in file_meta if not m["is_valid"]]
+    
+    start_msg = f"📂 Ditemukan **{total}** file audio.\n✅ Valid: {len(valid_files)} | ❌ Invalid: {len(invalid_files)}\n\n"
+    if invalid_files:
+        start_msg += "**File dilewati (nama salah):**\n" + "\n".join([f"- {m['filename']}" for m in invalid_files[:5]])
+        if len(invalid_files) > 5:
+            start_msg += f"\n...dan {len(invalid_files)-5} lainnya."
+
+    yield None, None, None, start_msg + "\n\nMemulai batch processing..."
 
     results = []
-    for i, wav_path in enumerate(wav_files):
+    skipped = 0
+    for i, meta in enumerate(valid_files):
         if _stop_flag.is_set():
-            yield None, f"⛔ Batch dihentikan pada file {i}/{total}."
+            yield None, None, None, f"⛔ Batch dihentikan pada file {i}/{len(valid_files)}."
             break
 
-        fname = os.path.basename(wav_path)
-        progress((i + 1) / total, desc=f"[{i+1}/{total}] {fname}")
-        yield None, f"🎙️ **[{i+1}/{total}]** Processing: `{fname}`"
+        fname = meta["filename"]
+        stem = os.path.splitext(fname)[0]
+        
+        # Cek resume
+        expected_output = get_output_audio_path("batch", stem)
+        if os.path.exists(expected_output):
+            skipped += 1
+            results.append({
+                "filename":  fname,
+                "folder":    meta["folder"],
+                "status":    "skipped (resume)",
+                "mode":      mode,
+                "error":     "",
+            })
+            continue
+
+        progress((i + 1) / len(valid_files), desc=f"[{i+1}/{len(valid_files)}] {fname}")
+        yield None, None, None, start_msg + f"\n\n🎙️ **[{i+1}/{len(valid_files)}]** Processing: `{fname}`"
 
         try:
-            result = run_pipeline(wav_path, mode=mode, output_dir=OUTPUT_DIR)
+            result = run_pipeline(meta["path"], mode=mode, pipeline_mode="batch")
             results.append(result)
         except Exception as e:
             results.append({
                 "filename": fname,
-                "folder": "?",
+                "folder": meta["folder"],
                 "status": "error",
                 "error": str(e),
                 "mode": mode,
             })
+            
+        if (i + 1) % 10 == 0:
+            save_checkpoint(results)
 
-    csv_path = os.path.join(OUTPUT_DIR, "batch_results.csv")
+    csv_path = get_batch_csv_path()
     results_to_csv(results, csv_path)
 
     ok = sum(1 for r in results if r.get("status") == "success")
-    fail = len(results) - ok
-
-    ok_results = [r for r in results if r.get("status") == "success"]
-    avg_wer = "-"
-    avg_cer = "-"
-    avg_lat = "-"
-    if ok_results:
-        numeric_wer = [r["wer"] for r in ok_results if isinstance(r.get("wer"), (int, float))]
-        numeric_cer = [r["cer"] for r in ok_results if isinstance(r.get("cer"), (int, float))]
-        if numeric_wer:
-            avg_wer = f"{sum(numeric_wer)/len(numeric_wer):.2%}"
-        if numeric_cer:
-            avg_cer = f"{sum(numeric_cer)/len(numeric_cer):.2%}"
-        lats = [r["latency_total"] for r in ok_results if "latency_total" in r]
-        if lats:
-            avg_lat = f"{sum(lats)/len(lats):.2f}s"
+    fail = len(results) - ok - skipped
 
     summary = (
         f"✅ **Batch Processing Selesai**\n\n"
@@ -297,21 +317,28 @@ def process_batch_nlp(mode, progress=gr.Progress()):
         f"|--------|-------|\n"
         f"| Total File | {total} |\n"
         f"| Berhasil | {ok} |\n"
-        f"| Gagal | {fail} |\n"
-        f"| Rata-rata WER | {avg_wer} |\n"
-        f"| Rata-rata CER | {avg_cer} |\n"
-        f"| Rata-rata Latency | {avg_lat} |\n\n"
-        f"📁 CSV: `output/batch_results.csv`\n"
-        f"🔊 Audio: `output/audio/`"
+        f"| Dilewati (Resume) | {skipped} |\n"
+        f"| Gagal | {fail} |\n\n"
+        f"📁 CSV: `output/batch/batch_results.csv`\n"
+        f"🔊 Audio: `output/batch/audio/`"
     )
-    yield csv_path, summary
+    
+    # Generate Tabel & Grafik
+    df = build_eval_dataframe(results)
+    fig = build_avg_charts(results)
+    
+    yield csv_path, df, fig, summary
 
 
-def clear_single():
+def clear_upload(audio_out_path, csv_out_path):
+    cleanup_output_file(audio_out_path)
+    cleanup_output_file(csv_out_path)
     return None, None, None, ""
 
 
-def clear_record():
+def clear_record(audio_out_path, csv_out_path):
+    cleanup_output_file(audio_out_path)
+    cleanup_output_file(csv_out_path)
     return None, None, None, ""
 
 
@@ -502,7 +529,9 @@ with gr.Blocks(css=CSS, head=HEAD_HTML, theme=gr.themes.Base()) as demo:
                                     <span class="material-symbols-outlined icon" style="color:#b9c7e0;">analytics</span>
                                     <span class="label">Analysis Results</span>
                                 </div>""")
-                                bat_out_csv = gr.File(label="Download CSV", interactive=False)
+                                bat_out_csv = gr.File(label="Download CSV Akhir", interactive=False)
+                                bat_out_df = gr.Dataframe(label="Tabel Evaluasi per File", interactive=False)
+                                bat_out_plot = gr.Plot(label="Grafik Rata-Rata Evaluasi")
 
     # ═══════════════════════════════════════════════════════════
     #  NAVIGATION LOGIC
@@ -526,17 +555,21 @@ with gr.Blocks(css=CSS, head=HEAD_HTML, theme=gr.themes.Base()) as demo:
     # ═══════════════════════════════════════════════════════════
 
     # Upload
-    up_run.click(process_single_audio, inputs=[up_audio, up_mode, up_voice, up_ref], outputs=[up_out_audio, up_out_csv, up_log])
-    up_clear.click(clear_single, outputs=[up_audio, up_out_audio, up_out_csv, up_log])
+    up_run.click(process_upload, inputs=[up_audio, up_mode, up_voice, up_ref], outputs=[up_out_audio, up_out_csv, up_log])
+    up_clear.click(clear_upload, inputs=[up_out_audio, up_out_csv], outputs=[up_audio, up_out_audio, up_out_csv, up_log])
     up_stop.click(request_stop, outputs=[up_log])
 
     # Record
-    rec_run.click(process_single_audio, inputs=[rec_audio, rec_mode, rec_voice, rec_ref], outputs=[rec_out_audio, rec_out_csv, rec_log])
-    rec_clear.click(clear_record, outputs=[rec_audio, rec_out_audio, rec_out_csv, rec_log])
+    rec_run.click(process_record, inputs=[rec_audio, rec_mode, rec_voice, rec_ref], outputs=[rec_out_audio, rec_out_csv, rec_log])
+    rec_clear.click(clear_record, inputs=[rec_out_audio, rec_out_csv], outputs=[rec_audio, rec_out_audio, rec_out_csv, rec_log])
     rec_stop.click(request_stop, outputs=[rec_log])
 
     # Batch
-    bat_run.click(process_batch_nlp, inputs=[bat_mode], outputs=[bat_out_csv, bat_log])
+    bat_run.click(
+        process_batch_nlp, 
+        inputs=[bat_mode], 
+        outputs=[bat_out_csv, bat_out_df, bat_out_plot, bat_log]
+    )
     bat_stop.click(request_stop, outputs=[bat_log])
 
 
