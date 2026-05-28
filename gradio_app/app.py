@@ -421,8 +421,8 @@ with gr.Blocks(css=CSS, head=HEAD_HTML, theme=gr.themes.Base()) as demo:
                                     )
                                 with gr.Column(scale=3, min_width=200):
                                     up_target_lang = gr.Dropdown(
-                                        choices=[("Bahasa Indonesia", "id"), ("English", "en"), ("Arabic", "ar")],
-                                        value="id", label="Target Translate Language", container=True, visible=False
+                                        choices=[("English", "en"), ("Arabic", "ar")],
+                                        value="en", label="Target Translate Language", container=True, visible=False
                                     )
                                     up_ref = gr.Dropdown(
                                         choices=["None"] + [f"{i:02d}" for i in range(1, 21)],
@@ -481,9 +481,9 @@ with gr.Blocks(css=CSS, head=HEAD_HTML, theme=gr.themes.Base()) as demo:
                                 elem_classes="toggle-radio",
                             )
                             rec_target_lang = gr.Dropdown(
-                                choices=[("Bahasa Indonesia", "id"), ("English", "en"), ("Arabic", "ar")],
-                                value="id", label="Target Translate Language", container=True, visible=False
-                            )
+                                        choices=[("English", "en"), ("Arabic", "ar")],
+                                        value="en", label="Target Translate Language", container=True, visible=False
+                                    )
                             rec_ref = gr.Dropdown(
                                 choices=["None"] + [f"{i:02d}" for i in range(1, 21)],
                                 value="None", label="Evaluasi Kunci Jawaban (Opsional)", container=True,
@@ -534,8 +534,8 @@ with gr.Blocks(css=CSS, head=HEAD_HTML, theme=gr.themes.Base()) as demo:
                                 elem_classes="toggle-radio",
                             )
                             bat_target_lang = gr.Dropdown(
-                                choices=[("Bahasa Indonesia", "id"), ("English", "en"), ("Arabic", "ar")],
-                                value="id", label="Target Translate Language", container=True, visible=False
+                                choices=[("English", "en"), ("Arabic", "ar")],
+                                value="en", label="Target Translate Language", container=True, visible=False
                             )
                             gr.HTML('<div style="height:1rem;"></div>')
                             with gr.Row():
