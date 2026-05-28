@@ -273,15 +273,23 @@ def run_pipeline(audio_path: str, mode: str = "preserve",
 
         # 5. LLM
         t1 = time.time()
-        llm_response = generate_response(normalized, mode=mode)
+        llm_response_data = generate_response(normalized, mode=mode)
         result["latency_llm"] = round(time.time() - t1, 3)
-        result["llm_response"] = llm_response
+        
+        if isinstance(llm_response_data, dict):
+            teks_asli = llm_response_data.get("teks_asli", str(llm_response_data))
+            teks_fonetik = llm_response_data.get("teks_fonetik", teks_asli)
+        else:
+            teks_asli = str(llm_response_data)
+            teks_fonetik = teks_asli
+            
+        result["llm_response"] = teks_asli
 
         # 6. TTS
         t2 = time.time()
         stem = Path(audio_path).stem
         output_wav = get_output_audio_path(pipeline_mode, stem)
-        synthesize_speech(llm_response, output_wav)
+        synthesize_speech(teks_fonetik, output_wav)
         result["latency_tts"] = round(time.time() - t2, 3)
         result["tts_output_path"] = output_wav
 

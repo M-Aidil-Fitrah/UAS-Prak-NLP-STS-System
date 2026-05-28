@@ -35,42 +35,47 @@ Kamu adalah asisten percakapan cerdas yang fasih berbahasa Indonesia, Inggris, d
 Pengguna berbicara dengan pola code-switching (mencampur bahasa Indonesia, Inggris, dan Arab).
 
 INSTRUKSI:
-1. Pahami makna penuh dari pesan pengguna meskipun mengandung campuran bahasa.
-2. Berikan respons yang MEMPERTAHANKAN pola code-switching yang sama seperti input.
-   Contoh: jika pengguna memakai ID+EN, balaslah juga dengan ID+EN secara natural.
-3. Respons harus relevan, informatif, dan terdengar natural dalam percakapan multibahasa.
-4. Jangan terjemahkan ke satu bahasa tunggal kecuali diminta.
-5. Tetap sopan dan membantu.
+1. Berikan respons yang MEMPERTAHANKAN pola code-switching yang sama seperti input.
+2. JANGAN menggunakan markdown formatting apapun selain JSON (tanpa blok ```json).
+3. Kamu WAJIB mengembalikan output murni dalam format JSON dengan dua key:
+   - "teks_asli": Respons aktual dengan ejaan baku. Untuk bahasa Arab WAJIB menggunakan Harakat (Tashkeel) penuh.
+   - "teks_fonetik": Transliterasi khusus mesin Text-to-Speech (TTS) Indonesia. Untuk bahasa Arab gunakan huruf Latin, dan untuk bahasa Inggris WAJIB gunakan ejaan pelafalan ala Indonesia (contoh: "flight" ditulis "flait", "schedule" ditulis "skedul").
 """.strip()
 
 SYSTEM_PROMPT_NORMALIZE = """
 Kamu adalah asisten percakapan cerdas yang fasih berbahasa Indonesia.
-Pengguna mungkin berbicara dengan campuran bahasa (Indonesia, Inggris, Arab).
+Pengguna mungkin berbicara dengan campuran bahasa.
 
 INSTRUKSI:
-1. Pahami makna penuh dari pesan pengguna meskipun mengandung campuran bahasa.
-2. Berikan respons SELURUHNYA dalam Bahasa Indonesia yang baku dan mudah dipahami.
-3. Jangan gunakan kata-kata bahasa Inggris atau Arab kecuali kata serapan resmi.
-4. Respons harus relevan, informatif, dan terdengar natural.
-5. Tetap sopan dan membantu.
+1. Berikan respons SELURUHNYA dalam Bahasa Indonesia baku.
+2. JANGAN menggunakan markdown formatting apapun selain JSON (tanpa blok ```json).
+3. Kamu WAJIB mengembalikan output murni dalam format JSON dengan dua key:
+   - "teks_asli": Respons baku dalam bahasa Indonesia.
+   - "teks_fonetik": Sama dengan teks_asli (karena bahasa Indonesia).
 """.strip()
 
 SYSTEM_PROMPT_TRANSLATE_ID = """
-Kamu adalah penerjemah profesional.
-Tugasmu adalah merespon sepenuhnya dengan menerjemahkan makna ucapan pengguna (yang mungkin menggunakan code-switching) ke dalam **Bahasa Indonesia** secara utuh dan natural.
-Dilarang keras membalas atau mencampurkan bahasa lain. Cukup berikan respon dalam Bahasa Indonesia.
+Kamu adalah penerjemah profesional. Terjemahkan ucapan pengguna sepenuhnya ke dalam **Bahasa Indonesia**.
+JANGAN menggunakan markdown formatting apapun selain JSON (tanpa blok ```json).
+Kamu WAJIB mengembalikan output murni dalam format JSON dengan dua key:
+- "teks_asli": Respons dalam Bahasa Indonesia utuh.
+- "teks_fonetik": Sama dengan teks_asli.
 """.strip()
 
 SYSTEM_PROMPT_TRANSLATE_EN = """
-You are a professional translator and conversational assistant.
-Your task is to understand the user's input (which may contain code-switching between Indonesian, English, and Arabic) and respond COMPLETELY in **English**.
-Do not use or mix any other languages. Provide a natural, helpful response entirely in English.
+You are a professional translator. Translate the user's input COMPLETELY into **English**.
+DO NOT use any markdown formatting other than JSON (no ```json blocks).
+You MUST return the output strictly in JSON format with two keys:
+- "teks_asli": The actual English translation.
+- "teks_fonetik": The exact English pronunciation spelled out using Indonesian phonetics/alphabet (e.g., "flight" written as "flait", "I want" written as "ai won").
 """.strip()
 
 SYSTEM_PROMPT_TRANSLATE_AR = """
-أنت مترجم محترف ومساعد محادثة.
-مهمتك هي فهم إدخال المستخدم (والذي قد يحتوي على خلط بين اللغات الإندونيسية والإنجليزية والعربية) والرد بالكامل باللغة **العربية** الفصحى الطبيعية والمفيدة.
-لا تستخدم أو تخلط أي لغات أخرى.
+أنت مترجم محترف. ترجم مدخلات المستخدم بالكامل إلى **العربية**.
+لا تستخدم أي تنسيق Markdown بخلاف JSON.
+يجب إرجاع الإخراج بتنسيق JSON صارم مع مفتاحين:
+- "teks_asli": الترجمة العربية مع التشكيل الكامل (Full Harakat).
+- "teks_fonetik": الترجمة الصوتية (Transliteration) للغة العربية باستخدام الحروف اللاتينية.
 """.strip()
 
 
@@ -136,13 +141,26 @@ def generate_response(transcript: str, mode: str = "preserve") -> str:
                     config=types.GenerateContentConfig(
                         system_instruction=system_prompt,
                         temperature=0.7,
-                        max_output_tokens=512,
+                        max_output_tokens=2048,
+                        response_mime_type="application/json",
                     ),
                 )
 
+                import json
                 result_text = response.text.strip()
-                logger.info(f"[LLM] Respons sukses diterima dari {model_name} ({len(result_text)} karakter)")
-                return result_text
+                logger.info(f"[LLM] Respons sukses diterima dari {model_name}")
+                
+                try:
+                    parsed = json.loads(result_text)
+                    if "teks_asli" not in parsed or "teks_fonetik" not in parsed:
+                        raise ValueError("JSON tidak memiliki key teks_asli atau teks_fonetik")
+                    return parsed
+                except json.JSONDecodeError:
+                    logger.error(f"[LLM] Gagal parsing JSON. Raw: {result_text}")
+                    import re
+                    # Hapus sintaks JSON kotor agar TTS tidak membaca "kurung kurawal teks asli"
+                    clean_text = re.sub(r'\{|"teks_asli"\s*:\s*"|"teks_fonetik"\s*:\s*"|"', '', result_text).strip()
+                    return {"teks_asli": result_text, "teks_fonetik": clean_text}
 
             except Exception as e:
                 error_str = str(e).lower()

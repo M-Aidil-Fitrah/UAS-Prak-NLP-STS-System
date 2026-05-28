@@ -135,8 +135,16 @@ def _process_single_audio(audio_input, mode, target_lang, tts_voice, ref_id, pip
     )
     try:
         t1 = time.time()
-        llm_response = generate_response(normalized, mode=actual_mode)
+        llm_response_data = generate_response(normalized, mode=actual_mode)
         lat_llm = round(time.time() - t1, 3)
+        
+        if isinstance(llm_response_data, dict):
+            teks_asli = llm_response_data.get("teks_asli", str(llm_response_data))
+            teks_fonetik = llm_response_data.get("teks_fonetik", teks_asli)
+        else:
+            teks_asli = str(llm_response_data)
+            teks_fonetik = teks_asli
+            
     except Exception as e:
         yield None, None, f"❌ **Error pada LLM**\n\n{str(e)}"
         return
@@ -146,14 +154,14 @@ def _process_single_audio(audio_input, mode, target_lang, tts_voice, ref_id, pip
         return
 
     # ── Step 4: TTS ──────────────────────────────────────────
-    yield None, None, f"🔊 **[4/5] Text-to-Speech** — Mensintesis audio respons via VITS...\n\n> LLM Response: *{llm_response[:200]}...*"
+    yield None, None, f"🔊 **[4/5] Text-to-Speech** — Mensintesis audio respons via VITS...\n\n> LLM Response: *{teks_asli[:200]}...*"
     try:
         t2 = time.time()
         from pathlib import Path
         stem = Path(audio_path).stem
         output_wav = get_output_audio_path(pipeline_mode, stem)
         os.makedirs(os.path.dirname(output_wav), exist_ok=True)
-        synthesize_speech(llm_response, output_wav, speaker_name=tts_voice)
+        synthesize_speech(teks_fonetik, output_wav, speaker_name=tts_voice)
         lat_tts = round(time.time() - t2, 3)
     except Exception as e:
         yield None, None, f"❌ **Error pada TTS**\n\n{str(e)}"
@@ -195,7 +203,7 @@ def _process_single_audio(audio_input, mode, target_lang, tts_voice, ref_id, pip
         "language_segments": str(segments),
         "wer": wer_val,
         "cer": cer_val,
-        "llm_response": llm_response,
+        "llm_response": teks_asli,
         "tts_output_path": output_wav,
         "latency_stt": lat_stt,
         "latency_llm": lat_llm,
@@ -221,7 +229,7 @@ def _process_single_audio(audio_input, mode, target_lang, tts_voice, ref_id, pip
         f"- Rasio: ID {ratio['ID']}% · EN {ratio['EN']}% · AR {ratio['AR']}%\n\n"
         f"---\n\n"
         f"**🤖 Respons LLM (Gemma)**\n"
-        f"> {llm_response}\n\n"
+        f"> {teks_asli}\n\n"
         f"---\n\n"
         f"**📊 Evaluasi**\n\n"
         f"| Metrik | Nilai |\n"
