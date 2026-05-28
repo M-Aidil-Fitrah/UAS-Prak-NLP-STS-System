@@ -65,7 +65,7 @@ def request_stop():
     return "⛔ Stop diminta. Menunggu proses saat ini selesai..."
 
 
-def _process_single_audio(audio_input, mode, tts_voice, ref_id, pipeline_mode):
+def _process_single_audio(audio_input, mode, target_lang, tts_voice, ref_id, pipeline_mode):
     """Process satu file audio dengan logging bertahap dan output rapi."""
     if audio_input is None:
         yield None, None, "⚠️ Tidak ada audio. Silakan upload atau rekam terlebih dahulu."
@@ -123,14 +123,19 @@ def _process_single_audio(audio_input, mode, tts_voice, ref_id, pipeline_mode):
         return
 
     # ── Step 3: LLM ──────────────────────────────────────────
+    actual_mode = mode
+    if mode == "translate":
+        actual_mode = f"translate_{target_lang}"
+
     yield None, None, (
-        f"🤖 **[3/5] Large Language Model** — Mengirim ke Gemma...\n\n"
+        f"🤖 **[3/5] Large Language Model** — Mengirim ke Gemini...\n\n"
         f"> Normalized: *{normalized}*\n"
-        f"> Bahasa dominan: **{dominant}** | Rasio: ID {ratio['ID']}% / EN {ratio['EN']}% / AR {ratio['AR']}%"
+        f"> Bahasa dominan: **{dominant}** | Rasio: ID {ratio['ID']}% / EN {ratio['EN']}% / AR {ratio['AR']}%\n"
+        f"> Mode: **{actual_mode}**"
     )
     try:
         t1 = time.time()
-        llm_response = generate_response(normalized, mode=mode)
+        llm_response = generate_response(normalized, mode=actual_mode)
         lat_llm = round(time.time() - t1, 3)
     except Exception as e:
         yield None, None, f"❌ **Error pada LLM**\n\n{str(e)}"
@@ -180,7 +185,7 @@ def _process_single_audio(audio_input, mode, tts_voice, ref_id, pipeline_mode):
         "filename": filename,
         "folder": "-",
         "status": "success",
-        "mode": mode,
+        "mode": actual_mode,
         "raw_transcript": raw,
         "normalized_transcript": normalized,
         "dominant_language": dominant,
@@ -233,19 +238,23 @@ def _process_single_audio(audio_input, mode, tts_voice, ref_id, pipeline_mode):
     yield output_wav, csv_path, final_log
 
 
-def process_upload(audio_input, mode, tts_voice, ref_id):
-    yield from _process_single_audio(audio_input, mode, tts_voice, ref_id, "upload")
+def process_upload(audio_input, mode, target_lang, tts_voice, ref_id):
+    yield from _process_single_audio(audio_input, mode, target_lang, tts_voice, ref_id, "upload")
 
 
-def process_record(audio_input, mode, tts_voice, ref_id):
-    yield from _process_single_audio(audio_input, mode, tts_voice, ref_id, "record")
+def process_record(audio_input, mode, target_lang, tts_voice, ref_id):
+    yield from _process_single_audio(audio_input, mode, target_lang, tts_voice, ref_id, "record")
 
 
 # --- Batch Pipeline ---
 
-def process_batch_nlp(mode, progress=gr.Progress()):
+def process_batch_nlp(mode, target_lang, progress=gr.Progress()):
     """Process semua file WAV dari corpus/audio/Audio_NLP/."""
     _stop_flag.clear()
+    
+    actual_mode = mode
+    if mode == "translate":
+        actual_mode = f"translate_{target_lang}"
     file_meta = collect_corpus_files_with_meta()
     total = len(file_meta)
 
@@ -291,7 +300,7 @@ def process_batch_nlp(mode, progress=gr.Progress()):
         yield None, None, None, start_msg + f"\n\n🎙️ **[{i+1}/{len(valid_files)}]** Processing: `{fname}`"
 
         try:
-            result = run_pipeline(meta["path"], mode=mode, pipeline_mode="batch")
+            result = run_pipeline(meta["path"], mode=actual_mode, pipeline_mode="batch")
             results.append(result)
         except Exception as e:
             results.append({
@@ -299,7 +308,7 @@ def process_batch_nlp(mode, progress=gr.Progress()):
                 "folder": meta["folder"],
                 "status": "error",
                 "error": str(e),
-                "mode": mode,
+                "mode": actual_mode,
             })
             
         if (i + 1) % 10 == 0:
@@ -392,7 +401,7 @@ with gr.Blocks(css=CSS, head=HEAD_HTML, theme=gr.themes.Base()) as demo:
                                 with gr.Column(scale=2, min_width=160):
                                     gr.HTML('<p class="toggle-label">Output Language Mode</p>')
                                     up_mode = gr.Radio(
-                                        choices=[("Preserve", "preserve"), ("Normalize", "normalize")],
+                                        choices=[("Preserve", "preserve"), ("Normalize", "normalize"), ("Translate", "translate")],
                                         value="preserve", label="", container=False,
                                         elem_classes="toggle-radio",
                                     )
@@ -403,6 +412,10 @@ with gr.Blocks(css=CSS, head=HEAD_HTML, theme=gr.themes.Base()) as demo:
                                         elem_classes="toggle-radio",
                                     )
                                 with gr.Column(scale=3, min_width=200):
+                                    up_target_lang = gr.Dropdown(
+                                        choices=[("Bahasa Indonesia", "id"), ("English", "en"), ("Arabic", "ar")],
+                                        value="id", label="Target Translate Language", container=True, visible=False
+                                    )
                                     up_ref = gr.Dropdown(
                                         choices=["None"] + [f"{i:02d}" for i in range(1, 21)],
                                         value="None", label="Evaluasi Kunci Jawaban (Opsional)", container=True,
@@ -449,7 +462,7 @@ with gr.Blocks(css=CSS, head=HEAD_HTML, theme=gr.themes.Base()) as demo:
                             </div>""")
                             gr.HTML('<p class="toggle-label">Output Language Mode</p>')
                             rec_mode = gr.Radio(
-                                choices=[("Preserve", "preserve"), ("Normalize", "normalize")],
+                                choices=[("Preserve", "preserve"), ("Normalize", "normalize"), ("Translate", "translate")],
                                 value="preserve", label="", container=False,
                                 elem_classes="toggle-radio",
                             )
@@ -458,6 +471,10 @@ with gr.Blocks(css=CSS, head=HEAD_HTML, theme=gr.themes.Base()) as demo:
                                 choices=[("Gadis (Wanita)", "gadis"), ("Ardi (Pria)", "ardi"), ("Wibowo (Pria)", "wibowo")],
                                 value="gadis", label="", container=False,
                                 elem_classes="toggle-radio",
+                            )
+                            rec_target_lang = gr.Dropdown(
+                                choices=[("Bahasa Indonesia", "id"), ("English", "en"), ("Arabic", "ar")],
+                                value="id", label="Target Translate Language", container=True, visible=False
                             )
                             rec_ref = gr.Dropdown(
                                 choices=["None"] + [f"{i:02d}" for i in range(1, 21)],
@@ -504,9 +521,13 @@ with gr.Blocks(css=CSS, head=HEAD_HTML, theme=gr.themes.Base()) as demo:
                             <p class="toggle-label">Output Language Mode</p>
                             """)
                             bat_mode = gr.Radio(
-                                choices=[("Preserve", "preserve"), ("Normalize", "normalize")],
+                                choices=[("Preserve", "preserve"), ("Normalize", "normalize"), ("Translate", "translate")],
                                 value="preserve", label="", container=False,
                                 elem_classes="toggle-radio",
+                            )
+                            bat_target_lang = gr.Dropdown(
+                                choices=[("Bahasa Indonesia", "id"), ("English", "en"), ("Arabic", "ar")],
+                                value="id", label="Target Translate Language", container=True, visible=False
                             )
                             gr.HTML('<div style="height:1rem;"></div>')
                             with gr.Row():
@@ -555,19 +576,22 @@ with gr.Blocks(css=CSS, head=HEAD_HTML, theme=gr.themes.Base()) as demo:
     # ═══════════════════════════════════════════════════════════
 
     # Upload
-    up_run.click(process_upload, inputs=[up_audio, up_mode, up_voice, up_ref], outputs=[up_out_audio, up_out_csv, up_log])
+    up_mode.change(lambda x: gr.update(visible=(x == "translate")), inputs=up_mode, outputs=up_target_lang)
+    up_run.click(process_upload, inputs=[up_audio, up_mode, up_target_lang, up_voice, up_ref], outputs=[up_out_audio, up_out_csv, up_log])
     up_clear.click(clear_upload, inputs=[up_out_audio, up_out_csv], outputs=[up_audio, up_out_audio, up_out_csv, up_log])
     up_stop.click(request_stop, outputs=[up_log])
 
     # Record
-    rec_run.click(process_record, inputs=[rec_audio, rec_mode, rec_voice, rec_ref], outputs=[rec_out_audio, rec_out_csv, rec_log])
+    rec_mode.change(lambda x: gr.update(visible=(x == "translate")), inputs=rec_mode, outputs=rec_target_lang)
+    rec_run.click(process_record, inputs=[rec_audio, rec_mode, rec_target_lang, rec_voice, rec_ref], outputs=[rec_out_audio, rec_out_csv, rec_log])
     rec_clear.click(clear_record, inputs=[rec_out_audio, rec_out_csv], outputs=[rec_audio, rec_out_audio, rec_out_csv, rec_log])
     rec_stop.click(request_stop, outputs=[rec_log])
 
     # Batch
+    bat_mode.change(lambda x: gr.update(visible=(x == "translate")), inputs=bat_mode, outputs=bat_target_lang)
     bat_run.click(
         process_batch_nlp, 
-        inputs=[bat_mode], 
+        inputs=[bat_mode, bat_target_lang], 
         outputs=[bat_out_csv, bat_out_df, bat_out_plot, bat_log]
     )
     bat_stop.click(request_stop, outputs=[bat_log])

@@ -48,8 +48,8 @@ async def voice_chat_endpoint(
     mode: str = Form("preserve"),
 ):
     """Endpoint Voice-Chat: audio -> STT -> LLM -> TTS -> audio response."""
-    if mode not in ["preserve", "normalize"]:
-        raise HTTPException(status_code=400, detail="Mode harus 'preserve' atau 'normalize'")
+    if mode not in ["preserve", "normalize", "translate_id", "translate_en", "translate_ar"]:
+        raise HTTPException(status_code=400, detail="Mode tidak valid")
 
     session_id = uuid.uuid4().hex[:8]
     logger.info(f"\n=== [Pipeline Started] Session: {session_id} | Mode: {mode} ===")

@@ -55,6 +55,24 @@ INSTRUKSI:
 5. Tetap sopan dan membantu.
 """.strip()
 
+SYSTEM_PROMPT_TRANSLATE_ID = """
+Kamu adalah penerjemah profesional.
+Tugasmu adalah merespon sepenuhnya dengan menerjemahkan makna ucapan pengguna (yang mungkin menggunakan code-switching) ke dalam **Bahasa Indonesia** secara utuh dan natural.
+Dilarang keras membalas atau mencampurkan bahasa lain. Cukup berikan respon dalam Bahasa Indonesia.
+""".strip()
+
+SYSTEM_PROMPT_TRANSLATE_EN = """
+You are a professional translator and conversational assistant.
+Your task is to understand the user's input (which may contain code-switching between Indonesian, English, and Arabic) and respond COMPLETELY in **English**.
+Do not use or mix any other languages. Provide a natural, helpful response entirely in English.
+""".strip()
+
+SYSTEM_PROMPT_TRANSLATE_AR = """
+أنت مترجم محترف ومساعد محادثة.
+مهمتك هي فهم إدخال المستخدم (والذي قد يحتوي على خلط بين اللغات الإندونيسية والإنجليزية والعربية) والرد بالكامل باللغة **العربية** الفصحى الطبيعية والمفيدة.
+لا تستخدم أو تخلط أي لغات أخرى.
+""".strip()
+
 
 # ─── Client inisialisasi ──────────────────────────────────────────────────────
 
@@ -88,6 +106,12 @@ def generate_response(transcript: str, mode: str = "preserve") -> str:
     # Pilih system prompt sesuai mode
     if mode == "normalize":
         system_prompt = SYSTEM_PROMPT_NORMALIZE
+    elif mode == "translate_id":
+        system_prompt = SYSTEM_PROMPT_TRANSLATE_ID
+    elif mode == "translate_en":
+        system_prompt = SYSTEM_PROMPT_TRANSLATE_EN
+    elif mode == "translate_ar":
+        system_prompt = SYSTEM_PROMPT_TRANSLATE_AR
     else:
         system_prompt = SYSTEM_PROMPT_PRESERVE
 
