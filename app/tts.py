@@ -85,13 +85,27 @@ def synthesize_speech(text: str, output_path: str, speaker_name: str = DEFAULT_S
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
 
     tts = _get_tts()
-    segments = tag_code_switching(text)
+    
+    # Karena teks sudah berupa teks_fonetik (ejaan Indonesia terpadu), kita tidak perlu tag_code_switching.
+    # Kita hanya perlu memecah kalimat berdasarkan tanda baca agar memori TTS tidak penuh.
+    import re
+    # Split text into sentences using basic punctuation
+    raw_segments = [s.strip() for s in re.split(r'([.?!])', text) if s.strip()]
+    
+    # Recombine punctuation with the sentence
+    sentences = []
+    for i in range(0, len(raw_segments), 2):
+        sentence = raw_segments[i]
+        if i + 1 < len(raw_segments):
+            sentence += raw_segments[i+1]
+        sentences.append({"lang": "ID", "text": sentence})
 
-    if not segments:
-        segments = [{"lang": "ID", "text": text}]
+    if not sentences:
+        sentences = [{"lang": "ID", "text": text}]
 
-    segments = _merge_short_segments(segments)
-    logger.info(f"[TTS] Mensintesis {len(segments)} segmen: {[s['lang'] for s in segments]}")
+    # Merge short segments (e.g. fewer than 3 words)
+    segments = _merge_short_segments(sentences)
+    logger.info(f"[TTS] Mensintesis {len(segments)} segmen teks fonetik.")
 
     if len(segments) == 1:
         _synthesize_segment(tts, segments[0]["text"], output_path, speaker_name)
