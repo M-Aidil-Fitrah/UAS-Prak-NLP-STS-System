@@ -139,7 +139,7 @@ Kita menggunakan model sintesis suara luring (*offline*) berbahasa Indonesia bua
 2. Unduh **tiga** file wajib ini:
    - `checkpoint_1260000-inference.pth` (Atau versi checkpoint terbarunya)
    - `config.json`
-   - `speakers.pth` (Jika tersedia)
+   - `speakers.pth`
 3. Buat folder bernama `data` di dalam folder `app/coqui_tts/` (jika belum ada).
 4. Letakkan ketiga file yang telah diunduh tersebut ke dalam:
    ```text
