@@ -23,28 +23,76 @@ from app.file_manager import (
 
 logger = logging.getLogger(__name__)
 
-# --- Dictionary / Kunci Jawaban ---
-REFERENCE_TRANSCRIPTS = {
-    "01": "Aku mau book flight ke Jeddah minggu depan, bisa bantu schedule?",
-    "02": "Aku butuh travel umrah simple tapi include Madinah visit",
-    "03": "Can you help aku arrange transport dari Jeddah ke Madinah tomorrow",
-    "04": "Explain step by step cara apply visa Saudi dengan benar",
-    "05": "يَا أَخِي، أُرِيدُ book flight إِلَى Jeddah الأُسْبُوع القَادِم. هَلْ bisa bantu أَجِد أَفْضَل schedule وَرِحْلَةً مُبَاشِرَةً؟",
-    "06": "أُرِيدُ arrange transport مِن Jeddah إِلَى Madinah غَدًا",
-    "07": "Book flight ke Jeddah lalu lanjut ke Madinah, schedule terbaik kapan",
-    "08": "اريد schedule trip dari Jeddah ke Makkah besok pagi",
-    "09": "ممكن book transport dari Makkah ke Madinah untuk besok",
-    "10": "Apa perbedaan umrah dan hajj secara detail dalam Islam",
-    "11": "Kenapa fasting di Ramadan itu wajib bagi Muslim",
-    "12": "Bagaimana proses visa Saudi untuk umrah dari Indonesia sekarang",
-    "13": "Jelaskan step by step cara booking flight ke Jeddah secara online",
-    "14": "How to prepare dokumen umrah dari Indonesia dengan benar",
-    "15": "Tolong buat checklist persiapan umrah termasuk barang wajib dibawa",
-    "16": "Guide aku cara pilih hotel di Makkah dekat Haram dengan budget terbatas",
-    "17": "Menurut kamu belajar bahasa Arab itu susah gak untuk pemula",
-    "18": "I feel overwhelmed dengan persiapan umrah, ada tips sederhana?",
-    "19": "احيانا saya bingung mulai dari mana untuk umrah",
-    "20": "Translate ke English: aku mau pergi ke Makkah minggu depan"
+# --- Dictionary / Kunci Jawaban (Dual-Reference) ---
+# Setiap entry adalah list berisi 1 atau 2 referensi:
+# - 1 referensi: kalimat Indonesia/Inggris (tidak perlu versi fonetik)
+# - 2 referensi: [versi Arab formal (ground truth), versi fonetik Latin (untuk Whisper)]
+REFERENCE_TRANSCRIPTS: dict[str, list[str]] = {
+    "01": [
+        "Aku mau book flight ke Jeddah minggu depan, bisa bantu schedule?"
+    ],
+    "02": [
+        "Aku butuh travel umrah simple tapi include Madinah visit"
+    ],
+    "03": [
+        "Can you help aku arrange transport dari Jeddah ke Madinah tomorrow"
+    ],
+    "04": [
+        "Explain step by step cara apply visa Saudi dengan benar"
+    ],
+    "05": [
+        "يَا أَخِي، أُرِيدُ book flight إِلَى Jeddah الأُسْبُوع القَادِم. هَلْ bisa bantu أَجِد أَفْضَل schedule وَرِحْلَةً مُبَاشِرَةً؟",
+        "ya akhi uridu book flight ila Jeddah al usbuu al qadim hal bisa bantu ajid afdhal schedule wa rihlatan mubashirah"
+    ],
+    "06": [
+        "أُرِيدُ arrange transport مِن Jeddah إِلَى Madinah غَدًا",
+        "uridu arrange transport min Jeddah ila Madinah ghadan"
+    ],
+    "07": [
+        "Book flight ke Jeddah lalu lanjut ke Madinah, schedule terbaik kapan"
+    ],
+    "08": [
+        "اريد schedule trip dari Jeddah ke Makkah besok pagi",
+        "uridu schedule trip dari Jeddah ke Makkah besok pagi"
+    ],
+    "09": [
+        "ممكن book transport dari Makkah ke Madinah untuk besok",
+        "mumkin book transport dari Makkah ke Madinah untuk besok"
+    ],
+    "10": [
+        "Apa perbedaan umrah dan hajj secara detail dalam Islam"
+    ],
+    "11": [
+        "Kenapa fasting di Ramadan itu wajib bagi Muslim"
+    ],
+    "12": [
+        "Bagaimana proses visa Saudi untuk umrah dari Indonesia sekarang"
+    ],
+    "13": [
+        "Jelaskan step by step cara booking flight ke Jeddah secara online"
+    ],
+    "14": [
+        "How to prepare dokumen umrah dari Indonesia dengan benar"
+    ],
+    "15": [
+        "Tolong buat checklist persiapan umrah termasuk barang wajib dibawa"
+    ],
+    "16": [
+        "Guide aku cara pilih hotel di Makkah dekat Haram dengan budget terbatas"
+    ],
+    "17": [
+        "Menurut kamu belajar bahasa Arab itu susah gak untuk pemula"
+    ],
+    "18": [
+        "I feel overwhelmed dengan persiapan umrah, ada tips sederhana?"
+    ],
+    "19": [
+        "احيانا saya bingung mulai dari mana untuk umrah",
+        "ahyanan saya bingung mulai dari mana untuk umrah"
+    ],
+    "20": [
+        "Translate ke English: aku mau pergi ke Makkah minggu depan"
+    ],
 }
 
 # CSV column order
@@ -103,6 +151,20 @@ def calculate_cer(ref: str, hyp: str) -> float:
     r = list(_clean_for_wer(ref).replace(" ", ""))
     h = list(_clean_for_wer(hyp).replace(" ", ""))
     return round(min(1.0, _levenshtein(r, h) / len(r)), 4) if r else (1.0 if h else 0.0)
+
+
+def calculate_wer_best(refs: list[str], hyp: str) -> float:
+    """Hitung WER terbaik (minimum) dari semua referensi yang tersedia (Dual-Reference)."""
+    if not refs:
+        return 1.0
+    return min(calculate_wer(ref, hyp) for ref in refs)
+
+
+def calculate_cer_best(refs: list[str], hyp: str) -> float:
+    """Hitung CER terbaik (minimum) dari semua referensi yang tersedia (Dual-Reference)."""
+    if not refs:
+        return 1.0
+    return min(calculate_cer(ref, hyp) for ref in refs)
 
 
 def compute_language_ratio(segments: list) -> dict:
@@ -265,8 +327,10 @@ def run_pipeline(audio_path: str, mode: str = "preserve",
 
         # 4. WER / CER (jika ada reference text)
         if ref_text:
-            result["wer"] = calculate_wer(ref_text, normalized)
-            result["cer"] = calculate_cer(ref_text, normalized)
+            # Normalisasi: ref_text bisa string (lama) atau list (dual-reference)
+            refs = ref_text if isinstance(ref_text, list) else [ref_text]
+            result["wer"] = calculate_wer_best(refs, normalized)
+            result["cer"] = calculate_cer_best(refs, normalized)
         else:
             result["wer"] = "N/A"
             result["cer"] = "N/A"

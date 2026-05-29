@@ -38,7 +38,8 @@ except Exception:
 # Import logic
 from app.pipeline import (
     run_pipeline, results_to_csv, collect_corpus_files_with_meta,
-    compute_language_ratio, REFERENCE_TRANSCRIPTS, calculate_wer, calculate_cer,
+    compute_language_ratio, REFERENCE_TRANSCRIPTS,
+    calculate_wer_best, calculate_cer_best,
     save_checkpoint
 )
 from app.stt import transcribe_speech_to_text
@@ -185,8 +186,9 @@ def _process_single_audio(audio_input, mode, target_lang, tts_voice, ref_id, pip
             ref_text = REFERENCE_TRANSCRIPTS.get(match.group(1))
 
     if ref_text:
-        wer_val = f"{calculate_wer(ref_text, normalized) * 100:.2f}%"
-        cer_val = f"{calculate_cer(ref_text, normalized) * 100:.2f}%"
+        refs = ref_text if isinstance(ref_text, list) else [ref_text]
+        wer_val = f"{calculate_wer_best(refs, normalized) * 100:.2f}%"
+        cer_val = f"{calculate_cer_best(refs, normalized) * 100:.2f}%"
 
     # ── Step 5: Evaluation & Result ──────────────────────────
     result = {
