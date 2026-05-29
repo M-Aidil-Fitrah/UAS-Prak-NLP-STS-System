@@ -404,23 +404,8 @@ with gr.Blocks(css=CSS, head=HEAD_HTML, theme=gr.themes.Base()) as demo:
     """)
 
     with gr.Row(elem_classes="main-row"):
-
-        # ── SHARED SIDEBAR ───────────────────────────────────
-        with gr.Column(scale=1, elem_classes="glass-card sidebar-col", min_width=220):
-            gr.HTML("""
-            <div class="sidebar-logo">
-                <span class="material-symbols-outlined logo-icon">graphic_eq</span>
-                <span class="logo-text">Sonic Lingua</span>
-            </div>
-            <p class="sidebar-section-label">Workflow</p>
-            """)
-            nav_upload = gr.Button("Upload Audio",  elem_classes="nav-btn nav-active")
-            nav_record = gr.Button("Record Audio",  elem_classes="nav-btn")
-            nav_batch  = gr.Button("Input Audio NLP", elem_classes="nav-btn")
-
-        # ── MAIN WORKSPACE ───────────────────────────────────
-        with gr.Column(scale=5):
-            with gr.Tabs(elem_classes="hidden-tabs") as tabs:
+        with gr.Column(scale=12):
+            with gr.Tabs() as tabs:
 
                 # ═══ VIEW 1: UPLOAD AUDIO ════════════════════════
                 with gr.TabItem("Upload", id="tab_upload"):
@@ -589,22 +574,7 @@ with gr.Blocks(css=CSS, head=HEAD_HTML, theme=gr.themes.Base()) as demo:
                                 bat_out_df = gr.Dataframe(label="Tabel Evaluasi per File", interactive=False)
                                 bat_out_plot = gr.Plot(label="Grafik Rata-Rata Evaluasi")
 
-    # ═══════════════════════════════════════════════════════════
-    #  NAVIGATION LOGIC
-    # ═══════════════════════════════════════════════════════════
 
-    def show_upload():
-        return gr.Tabs(selected="tab_upload")
-
-    def show_record():
-        return gr.Tabs(selected="tab_record")
-
-    def show_batch():
-        return gr.Tabs(selected="tab_batch")
-
-    nav_upload.click(show_upload, outputs=tabs)
-    nav_record.click(show_record, outputs=tabs)
-    nav_batch.click(show_batch,  outputs=tabs)
 
     # ═══════════════════════════════════════════════════════════
     #  PIPELINE TRIGGERS
