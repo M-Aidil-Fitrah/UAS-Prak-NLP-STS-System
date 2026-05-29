@@ -18,7 +18,8 @@ from app.file_manager import (
     TEMP_UPLOAD, cleanup_temp_file, cleanup_old_temp,
 )
 
-logging.basicConfig(level=logging.INFO)
+from app.logger import setup_logger
+setup_logger()
 logger = logging.getLogger(__name__)
 
 app = FastAPI(

@@ -6,6 +6,10 @@ Single sidebar, three switchable views. Full pipeline with detailed output.
 import os
 import sys
 
+# Jalankan Central Logger
+from app.logger import setup_logger
+setup_logger()
+
 # 1. PATH SETUP (MUST BE BEFORE IMPORTING GRADIO/PYDUB)
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT_DIR not in sys.path:

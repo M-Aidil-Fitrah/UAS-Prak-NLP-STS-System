@@ -21,6 +21,10 @@ from collections import defaultdict
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT_DIR)
 
+# Jalankan Central Logger
+from app.logger import setup_logger
+setup_logger()
+
 from app.pipeline import (
     run_pipeline, results_to_csv,
     collect_corpus_files_with_meta,
@@ -29,7 +33,7 @@ from app.file_manager import (
     OUTPUT_BATCH, get_batch_csv_path, get_checkpoint_path,
 )
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
 logger = logging.getLogger(__name__)
 
 def run_batch_evaluation():

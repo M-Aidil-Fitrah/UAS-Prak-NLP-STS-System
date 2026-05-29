@@ -26,6 +26,7 @@ output/
 
 # --- Log Runtime ---
 *.log
+log/
 
 # --- Python Cache ---
 __pycache__/
