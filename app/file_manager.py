@@ -32,6 +32,7 @@ OUTPUT_UPLOAD = os.path.join(OUTPUT_DIR, "upload")
 OUTPUT_RECORD = os.path.join(OUTPUT_DIR, "record")
 OUTPUT_BATCH  = os.path.join(OUTPUT_DIR, "batch")
 OUTPUT_BATCH_AUDIO = os.path.join(OUTPUT_BATCH, "audio")
+OUTPUT_BATCH_CHECKPOINTS = os.path.join(OUTPUT_BATCH, "checkpoints")
 
 # Direktori corpus (read-only, bukan temp)
 CORPUS_DIR = os.path.join(ROOT_DIR, "corpus", "audio", "Audio_NLP")
@@ -42,7 +43,7 @@ def _ensure_dirs() -> None:
     for d in [
         TEMP_UPLOAD, TEMP_RECORD,
         OUTPUT_UPLOAD, OUTPUT_RECORD,
-        OUTPUT_BATCH_AUDIO,
+        OUTPUT_BATCH_AUDIO, OUTPUT_BATCH_CHECKPOINTS
     ]:
         os.makedirs(d, exist_ok=True)
 
@@ -77,13 +78,14 @@ def get_temp_path(mode: str, suffix: str = ".wav") -> str:
 
 # ─── Getter Path Output ───────────────────────────────────────────────────────
 
-def get_output_audio_path(mode: str, stem: str) -> str:
+def get_output_audio_path(mode: str, stem: str, student_id: str = None) -> str:
     """
     Kembalikan path output audio TTS berdasarkan mode.
 
     Args:
         mode: "upload", "record", atau "batch"
         stem: nama dasar file tanpa ekstensi (misal: "1685100000_a1b2c3d4")
+        student_id: (opsional) untuk grouping folder batch per mahasiswa
 
     Returns:
         Path lengkap ke file output WAV.
@@ -93,19 +95,23 @@ def get_output_audio_path(mode: str, stem: str) -> str:
     elif mode == "record":
         return os.path.join(OUTPUT_RECORD, f"{stem}_response.wav")
     elif mode == "batch":
+        if student_id:
+            batch_dir = os.path.join(OUTPUT_BATCH_AUDIO, student_id)
+            os.makedirs(batch_dir, exist_ok=True)
+            return os.path.join(batch_dir, f"{stem}_response.wav")
         return os.path.join(OUTPUT_BATCH_AUDIO, f"{stem}_response.wav")
     else:
         raise ValueError(f"Mode tidak dikenal: '{mode}'.")
 
 
 def get_batch_csv_path(name: str = "batch_results.csv") -> str:
-    """Kembalikan path CSV hasil batch."""
+    """Kembalikan path CSV hasil akhir batch."""
     return os.path.join(OUTPUT_BATCH, name)
 
 
-def get_batch_checkpoint_path() -> str:
-    """Kembalikan path CSV checkpoint sementara batch (overwrite setiap N file)."""
-    return os.path.join(OUTPUT_BATCH, "_checkpoint.csv")
+def get_checkpoint_path(student_id: str) -> str:
+    """Kembalikan path JSON checkpoint sementara batch per mahasiswa."""
+    return os.path.join(OUTPUT_BATCH_CHECKPOINTS, f"{student_id}.json")
 
 
 # ─── Cleanup ──────────────────────────────────────────────────────────────────

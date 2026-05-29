@@ -17,7 +17,7 @@ from app.llm import generate_response
 from app.tts import synthesize_speech
 from app.file_manager import (
     OUTPUT_DIR, CORPUS_DIR,
-    get_output_audio_path, get_batch_csv_path, get_batch_checkpoint_path,
+    get_output_audio_path, get_batch_csv_path,
     OUTPUT_BATCH,
 )
 
@@ -187,28 +187,33 @@ def compute_language_ratio(segments: list) -> dict:
 _FILENAME_RE = re.compile(r"^(\d{4})_(\d{2})\.wav$", re.IGNORECASE)
 
 
-def validate_filename(filename: str) -> tuple[bool, str, str, str]:
+def normalize_and_validate_filename(filename: str) -> tuple[bool, str, str, str, str]:
     """
-    Validasi nama file audio sesuai format dictionary.md: {id}_{uttid}.wav
-
+    Fuzzy parsing nama file audio dan validasi.
+    
     Returns:
-        (is_valid, student_id, utterance_id, reason)
-        Jika tidak valid, student_id dan utterance_id adalah string kosong.
+        (is_valid, student_id, utterance_id, normalized_filename, reason)
     """
-    match = _FILENAME_RE.match(filename)
+    norm = filename.lower()
+    norm = norm.replace(".m4a", "")
+    norm = re.sub(r'\(\d+\)', '', norm)  # hapus (1), (2), dsb
+    
+    # Mencari pola: 4 digit (NPM) + (opsional _audio) + 1/2 digit (Utt ID)
+    match = re.search(r'^(\d{4})_?(?:audio)?(\d{1,2})\.wav$', norm)
     if not match:
-        return False, "", "", f"Format tidak sesuai (harusnya NNNN_NN.wav), dapat: '{filename}'"
+        return False, "", "", norm, f"Gagal dinormalisasi (bukan NNNN_NN.wav), dapat: '{filename}'"
 
-    student_id   = match.group(1)
-    utterance_id = match.group(2)
+    student_id = match.group(1)
+    utterance_id = match.group(2).zfill(2)  # pastikan 2 digit
+    normalized_filename = f"{student_id}_{utterance_id}.wav"
 
     if utterance_id not in REFERENCE_TRANSCRIPTS:
         return (
-            False, student_id, utterance_id,
+            False, student_id, utterance_id, normalized_filename,
             f"Utterance ID '{utterance_id}' tidak ada di kamus (01–20)"
         )
 
-    return True, student_id, utterance_id, ""
+    return True, student_id, utterance_id, normalized_filename, ""
 
 
 def collect_corpus_files(corpus_dir: str = None) -> list:
@@ -239,19 +244,34 @@ def collect_corpus_files_with_meta(corpus_dir: str = None) -> list:
         }
     """
     files = collect_corpus_files(corpus_dir)
-    meta = []
+    temp_dict = {}
+
     for wav_path in files:
         fname = os.path.basename(wav_path)
-        is_valid, sid, uid, reason = validate_filename(fname)
-        meta.append({
+        is_valid, sid, uid, norm_fname, reason = normalize_and_validate_filename(fname)
+        file_size = os.path.getsize(wav_path)
+
+        new_meta = {
             "path":         wav_path,
             "filename":     fname,
+            "normalized":   norm_fname,
             "folder":       get_folder_label(wav_path),
             "is_valid":     is_valid,
             "student_id":   sid,
             "utterance_id": uid,
             "reason":       reason,
-        })
+            "size":         file_size
+        }
+
+        # Deduplikasi: ambil file terbesar jika normalized_filename sama
+        if norm_fname in temp_dict:
+            if temp_dict[norm_fname]["size"] < file_size:
+                temp_dict[norm_fname] = new_meta
+        else:
+            temp_dict[norm_fname] = new_meta
+
+    meta = list(temp_dict.values())
+    meta.sort(key=lambda x: (x["student_id"], x["utterance_id"]))
     return meta
 
 
@@ -268,7 +288,9 @@ def get_folder_label(audio_path: str) -> str:
 
 def run_pipeline(audio_path: str, mode: str = "preserve",
                  pipeline_mode: str = "batch",
-                 ref_text: str = None) -> dict:
+                 ref_text: str = None,
+                 student_id: str = None,
+                 normalized_filename: str = None) -> dict:
     """
     Jalankan full pipeline pada satu file audio.
 
@@ -283,10 +305,11 @@ def run_pipeline(audio_path: str, mode: str = "preserve",
     """
 
     filename = os.path.basename(audio_path)
+    final_filename = normalized_filename if normalized_filename else filename
 
     # Auto-detect reference text dari nama file (format: {id}_{uttid}.wav)
     if ref_text is None:
-        match = re.search(r"_(\d{2})\.wav$", filename.lower())
+        match = re.search(r"_(\d{2})\.wav$", final_filename.lower())
         if match:
             ref_text = REFERENCE_TRANSCRIPTS.get(match.group(1))
 
@@ -351,8 +374,9 @@ def run_pipeline(audio_path: str, mode: str = "preserve",
 
         # 6. TTS
         t2 = time.time()
-        stem = Path(audio_path).stem
-        output_wav = get_output_audio_path(pipeline_mode, stem)
+        final_filename = normalized_filename if normalized_filename else filename
+        stem = Path(final_filename).stem
+        output_wav = get_output_audio_path(pipeline_mode, stem, student_id=student_id)
         synthesize_speech(teks_fonetik, output_wav)
         result["latency_tts"] = round(time.time() - t2, 3)
         result["tts_output_path"] = output_wav
@@ -388,12 +412,4 @@ def results_to_csv(results: list, csv_path: str = None) -> str:
     return csv_path
 
 
-def save_checkpoint(results: list) -> None:
-    """Simpan checkpoint CSV sementara setiap N file agar progress tidak hilang jika terhenti."""
-    if not results:
-        return
-    try:
-        results_to_csv(results, get_batch_checkpoint_path())
-        logger.info(f"[Checkpoint] Disimpan ({len(results)} file)")
-    except Exception as e:
-        logger.warning(f"[Checkpoint] Gagal menyimpan: {e}")
+

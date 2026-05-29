@@ -39,8 +39,7 @@ except Exception:
 from app.pipeline import (
     run_pipeline, results_to_csv, collect_corpus_files_with_meta,
     compute_language_ratio, REFERENCE_TRANSCRIPTS,
-    calculate_wer_best, calculate_cer_best,
-    save_checkpoint
+    calculate_wer_best, calculate_cer_best
 )
 from app.stt import transcribe_speech_to_text
 from app.utils import normalize_transcript, tag_code_switching, get_dominant_language
@@ -48,6 +47,7 @@ from app.llm import generate_response
 from app.tts import synthesize_speech
 from app.file_manager import (
     get_temp_path, get_output_audio_path, get_batch_csv_path,
+    get_checkpoint_path,
     cleanup_temp_file, cleanup_output_file, CORPUS_DIR, OUTPUT_DIR
 )
 from app.evaluator import build_eval_dataframe, build_avg_charts
@@ -259,7 +259,9 @@ def process_record(audio_input, mode, target_lang, tts_voice, ref_id):
 # --- Batch Pipeline ---
 
 def process_batch_nlp(mode, target_lang, progress=gr.Progress()):
-    """Process semua file WAV dari corpus/audio/Audio_NLP/."""
+    import json
+    from collections import defaultdict
+    
     _stop_flag.clear()
     
     actual_mode = mode
@@ -283,46 +285,69 @@ def process_batch_nlp(mode, target_lang, progress=gr.Progress()):
 
     yield None, None, None, start_msg + "\n\nMemulai batch processing..."
 
+    # Group files by student
+    student_groups = defaultdict(list)
+    for m in valid_files:
+        student_groups[m["student_id"]].append(m)
+        
     results = []
     skipped = 0
-    for i, meta in enumerate(valid_files):
+    total_students = len(student_groups)
+    
+    for idx, (student_id, st_files) in enumerate(student_groups.items(), 1):
         if _stop_flag.is_set():
-            yield None, None, None, f"⛔ Batch dihentikan pada file {i}/{len(valid_files)}."
+            yield None, None, None, f"⛔ Batch dihentikan pada Mahasiswa {idx}/{total_students}."
             break
-
-        fname = meta["filename"]
-        stem = os.path.splitext(fname)[0]
-        
-        # Cek resume
-        expected_output = get_output_audio_path("batch", stem)
-        if os.path.exists(expected_output):
-            skipped += 1
-            results.append({
-                "filename":  fname,
-                "folder":    meta["folder"],
-                "status":    "skipped (resume)",
-                "mode":      mode,
-                "error":     "",
-            })
-            continue
-
-        progress((i + 1) / len(valid_files), desc=f"[{i+1}/{len(valid_files)}] {fname}")
-        yield None, None, None, start_msg + f"\n\n🎙️ **[{i+1}/{len(valid_files)}]** Processing: `{fname}`"
-
-        try:
-            result = run_pipeline(meta["path"], mode=actual_mode, pipeline_mode="batch")
-            results.append(result)
-        except Exception as e:
-            results.append({
-                "filename": fname,
-                "folder": meta["folder"],
-                "status": "error",
-                "error": str(e),
-                "mode": actual_mode,
-            })
             
-        if (i + 1) % 10 == 0:
-            save_checkpoint(results)
+        progress(idx / total_students, desc=f"[{idx}/{total_students}] Mahasiswa {student_id}")
+        yield None, None, None, start_msg + f"\n\n👨‍🎓 **[{idx}/{total_students}]** Memproses Mahasiswa `{student_id}` ({len(st_files)} Audio)..."
+        
+        ckpt_path = get_checkpoint_path(student_id)
+        if os.path.exists(ckpt_path):
+            try:
+                with open(ckpt_path, "r", encoding="utf-8") as f:
+                    st_results = json.load(f)
+                results.extend(st_results)
+                skipped += len(st_files)
+                continue
+            except Exception as e:
+                # Jika checkpoint korup, proses ulang
+                pass
+                
+        # Proses semua file untuk mahasiswa ini
+        st_results = []
+        for meta in st_files:
+            if _stop_flag.is_set():
+                break
+                
+            fname = meta["filename"]
+            norm_fname = meta["normalized"]
+            
+            try:
+                res = run_pipeline(
+                    meta["path"], 
+                    mode=actual_mode, 
+                    pipeline_mode="batch",
+                    student_id=student_id,
+                    normalized_filename=norm_fname
+                )
+                st_results.append(res)
+            except Exception as e:
+                st_results.append({
+                    "filename": norm_fname,
+                    "folder": meta["folder"],
+                    "status": "error",
+                    "error": str(e),
+                    "mode": actual_mode,
+                })
+                
+        # Simpan checkpoint untuk mahasiswa ini
+        if not _stop_flag.is_set():
+            os.makedirs(os.path.dirname(ckpt_path), exist_ok=True)
+            with open(ckpt_path, "w", encoding="utf-8") as f:
+                json.dump(st_results, f, ensure_ascii=False, indent=2)
+            
+            results.extend(st_results)
 
     csv_path = get_batch_csv_path()
     results_to_csv(results, csv_path)
