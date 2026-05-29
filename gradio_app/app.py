@@ -78,7 +78,7 @@ def _process_single_audio(audio_input, mode, target_lang, tts_voice, ref_id, pip
 
     # --- Bypassing Gradio's internal processing bugs ---
     import subprocess
-    import tempfile
+
     import os
     
     _stop_flag.clear()
@@ -314,7 +314,7 @@ def process_batch_nlp(mode, target_lang, progress=gr.Progress()):
                 results.extend(st_results)
                 skipped += len(st_files)
                 continue
-            except Exception as e:
+            except Exception:
                 # Jika checkpoint korup, proses ulang
                 pass
                 
@@ -324,7 +324,7 @@ def process_batch_nlp(mode, target_lang, progress=gr.Progress()):
             if _stop_flag.is_set():
                 break
                 
-            fname = meta["filename"]
+
             norm_fname = meta["normalized"]
             
             try:

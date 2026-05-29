@@ -114,7 +114,6 @@ PHONETIC_CORRECTIONS = {
     r"\bhri du\b": "uridu",
     r"\bhri\b": "uridu",
     r"\barin\b": "arrange",
-    r"\bsangspor\b": "transport",
     r"\bsangspor\b": "transport"
 }
 
@@ -267,7 +266,7 @@ def get_dominant_language(text: str) -> str:
         return "ID"
 
     # Kalau ada 2+ bahasa dengan > 20% masing-masing → MIXED
-    significant = [l for l, c in lang_counts.items() if c / total > 0.2]
+    significant = [lang for lang, c in lang_counts.items() if c / total > 0.2]
     if len(significant) > 1:
         return "MIXED"
 

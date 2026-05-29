@@ -79,7 +79,7 @@ def synthesize_speech(text: str, output_path: str, speaker_name: str = DEFAULT_S
     if not text or not text.strip():
         raise ValueError("Teks untuk sintesis tidak boleh kosong.")
 
-    from app.utils import tag_code_switching
+
 
     # Pastikan direktori output ada
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)

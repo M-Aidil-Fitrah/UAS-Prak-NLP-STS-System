@@ -16,9 +16,8 @@ from app.utils import normalize_transcript, tag_code_switching, get_dominant_lan
 from app.llm import generate_response
 from app.tts import synthesize_speech
 from app.file_manager import (
-    OUTPUT_DIR, CORPUS_DIR,
+    CORPUS_DIR,
     get_output_audio_path, get_batch_csv_path,
-    OUTPUT_BATCH,
 )
 
 logger = logging.getLogger(__name__)

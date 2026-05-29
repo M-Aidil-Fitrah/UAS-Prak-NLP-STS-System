@@ -83,14 +83,13 @@ def run_batch_evaluation():
                     st_results = json.load(f)
                 results.extend(st_results)
                 skipped += len(st_files)
-                print(f"      ⏩ Resume: Checkpoint ditemukan, dilewati.")
+                print("      ⏩ Resume: Checkpoint ditemukan, dilewati.")
                 continue
-            except Exception as e:
-                print(f"      ⚠️ Checkpoint korup, memproses ulang...")
+            except Exception:
+                print("      ⚠️ Checkpoint korup, memproses ulang...")
                 
         st_results = []
         for i, meta in enumerate(st_files, 1):
-            fname = meta["filename"]
             norm_fname = meta["normalized"]
             
             print(f"      [{i}/{len(st_files)}] {norm_fname}...", end=" ", flush=True)
