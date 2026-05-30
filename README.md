@@ -78,8 +78,6 @@ voice-cs-system/
 │   └── app.log                  # File rekam jejak sistem (dibuat secara otomatis)
 ├── models/
 │   └── whisper.cpp/             # Folder WAJIB tempat model Whisper (Manual Build/Download)
-├── scripts/
-│   └── dictionary.md            # Catatan ground truth & transliterasi
 └── gradio_app/
     ├── app.py                   # Antarmuka Pengguna (GUI) interaktif via Gradio
     ├── analisis_pipeline.py     # Skrip CLI khusus untuk Batch Evaluasi Dataset
