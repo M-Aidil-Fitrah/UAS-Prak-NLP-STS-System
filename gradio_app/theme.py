@@ -135,7 +135,7 @@ div[data-testid="block"],
     padding: 1.5rem !important;
     margin-bottom: 0 !important;
     position: relative !important;
-    overflow: visible !important;
+    overflow: hidden !important;
 
     /* Scope vars so child Gradio components inherit transparency */
     --background-fill-primary:          transparent !important;
@@ -150,8 +150,35 @@ div[data-testid="block"],
     --border-color-primary:             rgba(255,255,255,0.08) !important;
 }
 
+.glass-card-no-blur {
+    background: rgba(11, 20, 40, 0.65) !important;
+    /* No backdrop-filter to allow fixed positioning for fullscreen image */
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-top-color: rgba(255, 255, 255, 0.15) !important;
+    border-radius: 1.125rem !important;
+    box-shadow:
+        0 4px 24px rgba(0, 0, 0, 0.5),
+        inset 0 1px 0 rgba(255,255,255,0.06) !important;
+    padding: 1.5rem !important;
+    margin-bottom: 0 !important;
+    position: relative !important;
+    overflow: hidden !important;
+
+    --background-fill-primary:          transparent !important;
+    --background-fill-secondary:        transparent !important;
+    --block-background-fill:            transparent !important;
+    --panel-background-fill:            transparent !important;
+    --block-border-width:               0px !important;
+    --block-border-color:               transparent !important;
+    --block-shadow:                     none !important;
+    --block-label-background-fill:      transparent !important;
+    --block-label-border-color:         transparent !important;
+    --border-color-primary:             rgba(255,255,255,0.08) !important;
+}
+
 /* Top shimmer line */
-.glass-card::before {
+.glass-card::before,
+.glass-card-no-blur::before {
     content: '';
     position: absolute;
     top: 0; left: 20%; right: 20%;
@@ -168,7 +195,15 @@ div[data-testid="block"],
 .glass-card .form,
 .glass-card .gap-4,
 .glass-card .gap-2,
-.glass-card div[data-testid] {
+.glass-card div[data-testid],
+.glass-card-no-blur > div,
+.glass-card-no-blur .block,
+.glass-card-no-blur .wrap,
+.glass-card-no-blur fieldset,
+.glass-card-no-blur .form,
+.glass-card-no-blur .gap-4,
+.glass-card-no-blur .gap-2,
+.glass-card-no-blur div[data-testid] {
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
@@ -191,6 +226,26 @@ div[data-testid="block"],
 .glass-card [class*="gr-row"],
 .glass-card [class*="gr-col"] {
     overflow: visible !important;
+}
+
+/* Allow dropdown specifically to overflow card */
+.glass-card [data-testid="dropdown"],
+.glass-card .gradio-dropdown {
+    overflow: visible !important;
+    position: relative !important;
+    z-index: 100 !important;
+}
+
+/* ── Constrain gr.Image so it never overflows its card ── */
+[data-testid="image"] {
+    overflow: hidden !important;
+}
+[data-testid="image"] img {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain !important;
+    display: block !important;
+    border-radius: 0.5rem !important;
 }
 
 /* ==========================================================

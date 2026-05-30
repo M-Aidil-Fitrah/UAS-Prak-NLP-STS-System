@@ -381,7 +381,7 @@ def process_batch_nlp(mode, target_lang, progress=gr.Progress()):
     plot_path = os.path.join(OUTPUT_BATCH, "batch_evaluation_charts.png")
     fig.savefig(plot_path, dpi=200, bbox_inches="tight")
     
-    yield csv_path, df, fig, plot_path, summary
+    yield csv_path, df, plot_path, plot_path, summary
 
 
 def clear_upload(audio_out_path, csv_out_path):
@@ -584,7 +584,13 @@ with gr.Blocks(css=CSS, head=HEAD_HTML, theme=gr.themes.Base()) as demo:
                                     bat_out_csv = gr.File(label="Download CSV Akhir", interactive=False)
                                     bat_out_plot_file = gr.File(label="Download Grafik (PNG)", interactive=False)
                                 bat_out_df = gr.Dataframe(label="Tabel Evaluasi per File", interactive=False)
-                                bat_out_plot = gr.Plot(label="Grafik Rata-Rata Evaluasi")
+
+                            with gr.Column(elem_classes="glass-card-no-blur"):
+                                gr.HTML("""<div class="card-header">
+                                    <span class="material-symbols-outlined icon" style="color:#fcd34d;">bar_chart</span>
+                                    <span class="label">Interactive Chart</span>
+                                </div>""")
+                                bat_out_plot = gr.Image(label="Grafik Rata-Rata Evaluasi", interactive=False, show_download_button=False, type="filepath", height=480)
 
 
 
