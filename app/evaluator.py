@@ -40,8 +40,8 @@ TABLE_COLUMNS = [
 
 def _extract_utterance_id(filename: str) -> str:
     """Ekstrak utterance ID (01–20) dari nama file format {id}_{uttid}.wav."""
-    match = re.search(r"_(\d{2})\.wav$", filename.lower())
-    return match.group(1) if match else "??"
+    match = re.search(r"_(\d{1,2})\.wav$", filename.lower())
+    return match.group(1).zfill(2) if match else "??"
 
 
 def _to_pct(val) -> str:
