@@ -40,7 +40,10 @@ TABLE_COLUMNS = [
 
 def _extract_utterance_id(filename: str) -> str:
     """Ekstrak utterance ID (01–20) dari nama file format {id}_{uttid}.wav atau {id}_audio{uttid}.wav."""
-    match = re.search(r"(\d+)\.wav$", filename.lower())
+    norm = filename.lower()
+    norm = norm.replace(".m4a", "")
+    norm = re.sub(r'\(\d+\)', '', norm)
+    match = re.search(r"(\d+)\.wav$", norm)
     return match.group(1).zfill(2) if match else "??"
 
 
@@ -157,7 +160,7 @@ def build_avg_charts(results: list) -> plt.Figure:
     x_off2  = [i + width / 2 for i in x]
 
     fig, (ax1, ax2) = plt.subplots(
-        2, 1, figsize=(max(10, len(uids) * 0.9), 9),
+        2, 1, figsize=(max(14, len(uids) * 1.2), 12),
         facecolor=_DARK_BG,
     )
     fig.subplots_adjust(hspace=0.45)

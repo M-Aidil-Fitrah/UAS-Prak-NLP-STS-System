@@ -54,7 +54,7 @@ from app.tts import synthesize_speech
 from app.file_manager import (
     get_temp_path, get_output_audio_path, get_batch_csv_path,
     get_checkpoint_path,
-    cleanup_temp_file, cleanup_output_file, CORPUS_DIR, OUTPUT_DIR
+    cleanup_temp_file, cleanup_output_file, CORPUS_DIR, OUTPUT_DIR, OUTPUT_BATCH
 )
 from app.evaluator import build_eval_dataframe, build_avg_charts
 
@@ -277,7 +277,7 @@ def process_batch_nlp(mode, target_lang, progress=gr.Progress()):
     total = len(file_meta)
 
     if total == 0:
-        yield None, None, None, f"⚠️ Tidak ada file WAV ditemukan di:\n`{CORPUS_DIR}`"
+        yield None, None, None, None, f"⚠️ Tidak ada file WAV ditemukan di:\n`{CORPUS_DIR}`"
         return
 
     valid_files = [m for m in file_meta if m["is_valid"]]
@@ -289,7 +289,7 @@ def process_batch_nlp(mode, target_lang, progress=gr.Progress()):
         if len(invalid_files) > 5:
             start_msg += f"\n...dan {len(invalid_files)-5} lainnya."
 
-    yield None, None, None, start_msg + "\n\nMemulai batch processing..."
+    yield None, None, None, None, start_msg + "\n\nMemulai batch processing..."
 
     # Group files by student
     student_groups = defaultdict(list)
@@ -302,11 +302,11 @@ def process_batch_nlp(mode, target_lang, progress=gr.Progress()):
     
     for idx, (student_id, st_files) in enumerate(student_groups.items(), 1):
         if _stop_flag.is_set():
-            yield None, None, None, f"⛔ Batch dihentikan pada Mahasiswa {idx}/{total_students}."
+            yield None, None, None, None, f"⛔ Batch dihentikan pada Mahasiswa {idx}/{total_students}."
             break
             
         progress(idx / total_students, desc=f"[{idx}/{total_students}] Mahasiswa {student_id}")
-        yield None, None, None, start_msg + f"\n\n👨‍🎓 **[{idx}/{total_students}]** Memproses Mahasiswa `{student_id}` ({len(st_files)} Audio)..."
+        yield None, None, None, None, start_msg + f"\n\n👨‍🎓 **[{idx}/{total_students}]** Memproses Mahasiswa `{student_id}` ({len(st_files)} Audio)..."
         
         ckpt_path = get_checkpoint_path(student_id)
         if os.path.exists(ckpt_path):
@@ -377,7 +377,11 @@ def process_batch_nlp(mode, target_lang, progress=gr.Progress()):
     df = build_eval_dataframe(results)
     fig = build_avg_charts(results)
     
-    yield csv_path, df, fig, summary
+    # Save the chart to a file for downloading
+    plot_path = os.path.join(OUTPUT_BATCH, "batch_evaluation_charts.png")
+    fig.savefig(plot_path, dpi=200, bbox_inches="tight")
+    
+    yield csv_path, df, fig, plot_path, summary
 
 
 def clear_upload(audio_out_path, csv_out_path):
@@ -576,7 +580,9 @@ with gr.Blocks(css=CSS, head=HEAD_HTML, theme=gr.themes.Base()) as demo:
                                     <span class="material-symbols-outlined icon" style="color:#b9c7e0;">analytics</span>
                                     <span class="label">Analysis Results</span>
                                 </div>""")
-                                bat_out_csv = gr.File(label="Download CSV Akhir", interactive=False)
+                                with gr.Row():
+                                    bat_out_csv = gr.File(label="Download CSV Akhir", interactive=False)
+                                    bat_out_plot_file = gr.File(label="Download Grafik (PNG)", interactive=False)
                                 bat_out_df = gr.Dataframe(label="Tabel Evaluasi per File", interactive=False)
                                 bat_out_plot = gr.Plot(label="Grafik Rata-Rata Evaluasi")
 
@@ -603,7 +609,7 @@ with gr.Blocks(css=CSS, head=HEAD_HTML, theme=gr.themes.Base()) as demo:
     bat_run.click(
         process_batch_nlp, 
         inputs=[bat_mode, bat_target_lang], 
-        outputs=[bat_out_csv, bat_out_df, bat_out_plot, bat_log]
+        outputs=[bat_out_csv, bat_out_df, bat_out_plot, bat_out_plot_file, bat_log]
     )
     bat_stop.click(request_stop, outputs=[bat_log])
 
