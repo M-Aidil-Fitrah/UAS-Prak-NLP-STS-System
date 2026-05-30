@@ -21,9 +21,9 @@ from collections import defaultdict
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT_DIR)
 
-# Jalankan Central Logger
-from app.logger import setup_logger
-setup_logger()
+# Inisialisasi CLI Logger — menulis ke log/cli.log (terpisah dari log Gradio)
+from app.logger import setup_cli_logger
+setup_cli_logger()
 
 from app.pipeline import (
     run_pipeline, results_to_csv,
@@ -36,31 +36,30 @@ from app.file_manager import (
 
 logger = logging.getLogger(__name__)
 
-def run_batch_evaluation():
+def run_batch_evaluation() -> None:
     """Iterasi seluruh file WAV di corpus Audio_NLP, jalankan pipeline per mahasiswa."""
     file_meta = collect_corpus_files_with_meta()
     total = len(file_meta)
 
-    print("=" * 60)
-    print(f"  BATCH EVALUATION — {total} file audio ditemukan")
-    print("=" * 60)
+    logger.info("=" * 60)
+    logger.info(f"BATCH EVALUATION — {total} file audio ditemukan")
+    logger.info("=" * 60)
 
     if total == 0:
-        print("Tidak ada file WAV ditemukan di corpus/audio/Audio_NLP/")
+        logger.warning("Tidak ada file WAV ditemukan di corpus/audio/Audio_NLP/")
         return
 
     # ── Validasi nama file sebelum pipeline jalan ────────────────────────────
     valid_files   = [m for m in file_meta if m["is_valid"]]
     invalid_files = [m for m in file_meta if not m["is_valid"]]
 
-    print(f"\n  ✅ Valid   : {len(valid_files)} file")
-    print(f"  ❌ Invalid : {len(invalid_files)} file")
+    logger.info(f"Valid   : {len(valid_files)} file")
+    logger.info(f"Invalid : {len(invalid_files)} file")
 
     if invalid_files:
-        print("\n  File yang dilewati (nama tidak sesuai format):")
+        logger.warning("File yang dilewati (nama tidak sesuai format):")
         for m in invalid_files:
-            print(f"    - {m['filename']}  →  {m['reason']}")
-    print()
+            logger.warning(f"  - {m['filename']}  ->  {m['reason']}")
 
     # Group files by student
     student_groups = defaultdict(list)
@@ -70,12 +69,12 @@ def run_batch_evaluation():
     results = []
     skipped = 0
     total_students = len(student_groups)
-    
-    print(f"  🔄 Akan diproses: {total_students} Mahasiswa\n")
+
+    logger.info(f"Akan diproses: {total_students} Mahasiswa")
 
     for idx, (student_id, st_files) in enumerate(student_groups.items(), 1):
-        print(f"👨‍🎓 [{idx}/{total_students}] Memproses Mahasiswa {student_id} ({len(st_files)} Audio)")
-        
+        logger.info(f"[{idx}/{total_students}] Memproses Mahasiswa {student_id} ({len(st_files)} Audio)")
+
         ckpt_path = get_checkpoint_path(student_id)
         if os.path.exists(ckpt_path):
             try:
@@ -83,34 +82,31 @@ def run_batch_evaluation():
                     st_results = json.load(f)
                 results.extend(st_results)
                 skipped += len(st_files)
-                print("      ⏩ Resume: Checkpoint ditemukan, dilewati.")
+                logger.info(f"  -> Resume: Checkpoint ditemukan untuk {student_id}, dilewati.")
                 continue
             except Exception:
-                print("      ⚠️ Checkpoint korup, memproses ulang...")
-                
+                logger.warning(f"  -> Checkpoint {student_id} korup, memproses ulang...")
+
         st_results = []
         for i, meta in enumerate(st_files, 1):
             norm_fname = meta["normalized"]
-            
-            print(f"      [{i}/{len(st_files)}] {norm_fname}...", end=" ", flush=True)
-            
             try:
                 res = run_pipeline(
-                    meta["path"], 
-                    mode="preserve", 
+                    meta["path"],
+                    mode="preserve",
                     pipeline_mode="batch",
                     student_id=student_id,
                     normalized_filename=norm_fname
                 )
                 st_results.append(res)
-                
+
                 if res["status"] == "success":
                     lat = res.get("latency_total", "?")
                     wer = res.get("wer", "N/A")
-                    print(f"OK (Lat: {lat}s | WER: {wer})")
+                    logger.info(f"  [{i}/{len(st_files)}] {norm_fname} -> OK (Lat: {lat}s | WER: {wer})")
                 else:
-                    print(f"FAIL ({res.get('error', '?')})")
-                    
+                    logger.warning(f"  [{i}/{len(st_files)}] {norm_fname} -> FAIL ({res.get('error', '?')})")
+
             except Exception as e:
                 st_results.append({
                     "filename": norm_fname,
@@ -119,31 +115,30 @@ def run_batch_evaluation():
                     "error": str(e),
                     "mode": "preserve",
                 })
-                print(f"ERROR ({e})")
-                
+                logger.error(f"  [{i}/{len(st_files)}] {norm_fname} -> ERROR ({e})")
+
         # Simpan checkpoint untuk mahasiswa ini
         os.makedirs(os.path.dirname(ckpt_path), exist_ok=True)
         with open(ckpt_path, "w", encoding="utf-8") as f:
             json.dump(st_results, f, ensure_ascii=False, indent=2)
-            
+
         results.extend(st_results)
-        print()
 
     # ── Export Akhir ─────────────────────────────────────────────────────────
     csv_path = results_to_csv(results, get_batch_csv_path())
-    print(f"CSV: {csv_path}")
+    logger.info(f"CSV tersimpan: {csv_path}")
 
     json_path = os.path.join(OUTPUT_BATCH, "batch_results.json")
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
-    print(f"JSON: {json_path}")
+    logger.info(f"JSON tersimpan: {json_path}")
 
-    ok      = sum(1 for r in results if r.get("status") == "success")
-    fail    = len(results) - ok
+    ok   = sum(1 for r in results if r.get("status") == "success")
+    fail = len(results) - ok
 
-    print(f"\n{'=' * 60}")
-    print(f"  SELESAI — Berhasil: {ok} | Dilewati: {skipped} | Gagal: {fail} | Total: {len(valid_files)}")
-    print(f"{'=' * 60}")
+    logger.info("=" * 60)
+    logger.info(f"SELESAI — Berhasil: {ok} | Dilewati: {skipped} | Gagal: {fail} | Total: {len(valid_files)}")
+    logger.info("=" * 60)
 
 
 if __name__ == "__main__":
