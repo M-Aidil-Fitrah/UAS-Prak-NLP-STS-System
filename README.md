@@ -6,13 +6,14 @@ Sistem ini dikembangkan sebagai pemenuhan Project Akhir Praktikum Natural Langua
 
 ---
 
-## 🏗️ Arsitektur & Pipeline Sistem
+## Arsitektur & Pipeline Sistem
 
 Sistem ini dibangun di atas arsitektur *pipeline* yang kokoh, menghubungkan berbagai model AI (STT, LLM, TTS) menjadi satu aliran yang terintegrasi:
 
 ```mermaid
 graph TD;
-    A[Audio Input] -->|WAV| B(STT: Whisper.cpp)
+    A[Audio Input] -->|Upload / Record / Batch| Z(FFmpeg: Remux & Sanitize)
+    Z -->|WAV 16kHz PCM| B(STT: Whisper.cpp)
     B -->|Transkripsi Teks Kotor| C(Preprocessing & Normalisasi)
     C -->|Teks Bersih| D(LLM: Google Gemini API)
     
@@ -30,14 +31,26 @@ graph TD;
 ```
 
 ### Penjelasan Komponen Inti:
-1. **STT (Speech-to-Text)**: Menggunakan model *Whisper* via `whisper.cpp` untuk menangkap suara pengguna secara luring (*offline*) dan mengubahnya menjadi teks, seakurat mungkin menangkap campuran bahasa.
-2. **Text Processing**: Teks hasil STT dibersihkan dari anomali pendengaran mesin (misal: "jam jam" menjadi "zamzam") menggunakan modul Regex yang terpusat di `utils.py`.
-3. **LLM (Large Language Model)**: Menggunakan kecerdasan **Gemini Gemma 4 (31B)** via API. Model ini bertugas memahami konteks ucapan pengguna dan memberikan respons yang relevan sesuai mode yang dipilih.
-4. **TTS (Text-to-Speech)**: Memanfaatkan **Coqui TTS** dengan model VITS berbahasa Indonesia untuk menyintesis teks respons LLM kembali menjadi suara audio yang terdengar natural.
+1. **FFmpeg Remux (Pre-processing)**: Modul pertahanan sistem yang bekerja di latar belakang. Otomatis "mencuci" (*remux*) dan menstandarisasi file audio apa pun menjadi WAV murni (16kHz PCM) agar kebal terhadap file rusak atau *fake extension*.
+2. **STT (Speech-to-Text)**: Menggunakan model *Whisper* via `whisper.cpp` untuk menangkap suara pengguna secara luring (*offline*) dan mengubahnya menjadi teks, seakurat mungkin menangkap campuran bahasa.
+3. **Text Processing**: Teks hasil STT dibersihkan dari anomali pendengaran mesin (misal: "jam jam" menjadi "zamzam") menggunakan modul Regex yang terpusat di `utils.py`.
+4. **LLM (Large Language Model)**: Menggunakan kecerdasan **Gemini Gemma 4 (31B)** via API. Model ini bertugas memahami konteks ucapan pengguna dan memberikan respons yang relevan sesuai mode yang dipilih.
+5. **TTS (Text-to-Speech)**: Memanfaatkan **Coqui TTS** dengan model VITS berbahasa Indonesia untuk menyintesis teks respons LLM kembali menjadi suara audio yang terdengar natural.
 
 ---
 
-## 📂 Struktur Direktori
+## Fitur Unggulan Proyek
+
+Selain menjalankan fungsi S2S dasar, proyek ini dilengkapi dengan arsitektur penunjang tangguh (*Production-Ready*):
+- **Automatic Audio Sanitation (Remux):** Kebal terhadap manipulasi ekstensi file (seperti `.m4a` yang di-rename manual).
+- **Fault-Tolerant LLM:** Perlindungan terhadap *Rate Limit* (429) dan *Server Error* (500) dengan sistem *fallback* model cadangan otomatis.
+- **Robust Batch Processing:** Evaluasi ratusan audio secara otonom dengan dukungan *Checkpointing JSON* (bisa di-*resume* jika terputus).
+- **Global Centralized Logging:** Perekaman jejak aktivitas dan latensi ke dalam file fisik rotasi `log/app.log`.
+- **Unified UI Workspace:** Antarmuka satu pintu (Gradio) untuk fitur *Upload*, *Record*, maupun evaluasi *Batch*.
+
+---
+
+## Struktur Direktori
 
 ```text
 voice-cs-system/
@@ -75,7 +88,7 @@ voice-cs-system/
 
 ---
 
-## ⚙️ Panduan Setup & Instalasi
+## Panduan Setup & Instalasi
 
 ### 1. Persiapan Lingkungan (Virtual Environment)
 Sistem ini dirancang berjalan di dalam *Virtual Environment* agar dependensinya tidak bentrok.
@@ -107,7 +120,7 @@ GEMINI_MODEL=models/ISIMODELDISINI(misal: gemma-4-31b-it)
 
 ---
 
-## 📥 Panduan Instalasi Model STT dan TTS (Sangat Penting)
+## Panduan Instalasi Model STT dan TTS (Sangat Penting)
 Agar *repository* Github tidak membengkak, saya membuat model STT dan TTS dimasukkan ke dalam `.gitignore`. Anda **WAJIB** mengunduh dan menyusunnya secara manual mengikuti langkah-langkah presisi berikut:
 
 ### A. Konfigurasi STT (Whisper.cpp)
@@ -151,7 +164,7 @@ Kita menggunakan model sintesis suara luring (*offline*) berbahasa Indonesia bua
 
 ---
 
-## 🚀 Cara Menjalankan Aplikasi
+## Cara Menjalankan Aplikasi
 
 Aplikasi S2S ini dapat dieksekusi dalam tiga mode berbeda tergantung kebutuhan Anda:
 
@@ -179,7 +192,7 @@ python gradio_app/analisis_pipeline.py
 
 ---
 
-## 📖 Kamus Referensi Dataset (Ground Truth)
+## Kamus Referensi Dataset (Ground Truth)
 
 Berikut adalah daftar kalimat wajib (*Mandatory*) dan bebas (*Free-Pick*) yang diujikan dalam korpus untuk penilaian matriks keakuratan:
 
@@ -208,7 +221,7 @@ Berikut adalah daftar kalimat wajib (*Mandatory*) dan bebas (*Free-Pick*) yang d
 
 ---
 
-## 🔗 Referensi Repositori
+## Referensi Repositori
 
 Proyek ini dibangun dengan mengintegrasikan beberapa proyek Sumber Terbuka (*Open-Source*) yang menakjubkan:
 
