@@ -308,7 +308,7 @@ def run_pipeline(audio_path: str, mode: str = "preserve",
 
     # Auto-detect reference text dari nama file (format: {id}_{uttid}.wav)
     if ref_text is None:
-        match = re.search(r"_(\d{1,2})\.wav$", final_filename.lower())
+        match = re.search(r"(\d+)\.wav$", final_filename.lower())
         if match:
             ref_text = REFERENCE_TRANSCRIPTS.get(match.group(1).zfill(2))
 

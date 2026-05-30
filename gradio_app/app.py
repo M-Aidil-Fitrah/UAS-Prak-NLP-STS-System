@@ -359,7 +359,7 @@ def process_batch_nlp(mode, target_lang, progress=gr.Progress()):
     results_to_csv(results, csv_path)
 
     ok = sum(1 for r in results if r.get("status") == "success")
-    fail = len(results) - ok - skipped
+    fail = len(results) - ok
 
     summary = (
         f"✅ **Batch Processing Selesai**\n\n"

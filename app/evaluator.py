@@ -39,8 +39,8 @@ TABLE_COLUMNS = [
 # ─── Helper ───────────────────────────────────────────────────────────────────
 
 def _extract_utterance_id(filename: str) -> str:
-    """Ekstrak utterance ID (01–20) dari nama file format {id}_{uttid}.wav."""
-    match = re.search(r"_(\d{1,2})\.wav$", filename.lower())
+    """Ekstrak utterance ID (01–20) dari nama file format {id}_{uttid}.wav atau {id}_audio{uttid}.wav."""
+    match = re.search(r"(\d+)\.wav$", filename.lower())
     return match.group(1).zfill(2) if match else "??"
 
 

@@ -139,7 +139,7 @@ def run_batch_evaluation():
     print(f"JSON: {json_path}")
 
     ok      = sum(1 for r in results if r.get("status") == "success")
-    fail    = len(results) - ok - skipped
+    fail    = len(results) - ok
 
     print(f"\n{'=' * 60}")
     print(f"  SELESAI — Berhasil: {ok} | Dilewati: {skipped} | Gagal: {fail} | Total: {len(valid_files)}")
