@@ -17,9 +17,15 @@ load_dotenv()
 # ─── Konfigurasi ─────────────────────────────────────────────────────────────
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-# Sesuai instruksi proyek: kita gunakan model Gemma 4 31B
-# Sesuaikan juga dengan rate limit RPM & RPD yang berlaku di Google AI Studio kamu
+# Model utama dari env
 GEMINI_MODEL   = os.getenv("GEMINI_MODEL", "models/gemma-4-31b-it")
+
+# Rantai model fallback otomatis yang diakses secara berurutan jika terjadi kegagalan (Rate Limit / Server Error):
+# gemma-4-31b-it -> gemma-4-26b-a4b-it -> gemini-2.5-flash -> gemini-3.1-flash-lite
+FALLBACK_CHAIN = []
+for model in [GEMINI_MODEL, "models/gemma-4-26b-a4b-it", "models/gemini-2.5-flash", "models/gemini-3.1-flash-lite"]:
+    if model not in FALLBACK_CHAIN:
+        FALLBACK_CHAIN.append(model)
 
 # Rate-limit control
 MAX_RETRIES     = 3
@@ -116,12 +122,8 @@ def generate_response(transcript: str, mode: str = "preserve") -> str:
 
     client = _get_client()
 
-    # Daftarkan skema fallback otomatis demi kestabilan maksimal
-    primary_model = os.getenv("GEMINI_MODEL", "models/gemma-4-31b-it")
-    fallback_list = [primary_model]
-    for m in ["models/gemma-4-26b-a4b-it", "models/gemini-2.5-flash", "models/gemini-3.1-flash-lite"]:
-        if m not in fallback_list:
-            fallback_list.append(m)
+    # Menggunakan rantai model fallback otomatis yang diatur secara terpusat di tingkat modul
+    fallback_list = FALLBACK_CHAIN
 
     last_error = None
     for model_name in fallback_list:
